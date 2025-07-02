@@ -11,3 +11,6 @@ opencv-python-headless
 matplotlib
 numpy
 accelerate
+Pillow
+protobuf
+sentencepiece

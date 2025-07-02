@@ -1029,14 +1029,23 @@ class HybridEmotionTherapySystem:
                     ),
                     use_safetensors=True,
                     variant="fp16" if self.device.type == "cuda" else None,
-                    device_map="auto" if self.device.type == "cuda" else None,
                 ).to(self.device)
 
-                # CUDA 최적화 설정
+                # CUDA 최적화 설정 (SD3에서 지원되는 메서드만 사용)
                 if self.device.type == "cuda":
-                    self.pipeline.enable_attention_slicing()
-                    self.pipeline.enable_vae_slicing()
-                    self.pipeline.enable_cpu_offload()
+                    try:
+                        self.pipeline.enable_attention_slicing()
+                        logger.info("Attention slicing 활성화")
+                    except AttributeError:
+                        logger.warning("Attention slicing이 지원되지 않습니다")
+                    
+                    # self.pipeline.enable_vae_slicing()  # SD3에서 지원되지 않음
+                    
+                    try:
+                        self.pipeline.enable_cpu_offload()
+                        logger.info("CPU offload 활성화")
+                    except AttributeError:
+                        logger.warning("CPU offload가 지원되지 않습니다")
 
                 logger.info("Stable Diffusion 3 파이프라인 로드 완료")
             except Exception as e:
