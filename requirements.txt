@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+python-multipart
+jinja2
+torch
+transformers
+diffusers
+peft
+scipy
+opencv-python-headless
+matplotlib
+numpy
+accelerate
