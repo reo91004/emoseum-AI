@@ -135,7 +135,7 @@ python main.py --user-id "carol" --text "기쁨" --verbose
 ### 1. VAD 감정 모델
 
 - **Valence**: 감정의 긍정/부정 정도 (-1.0 ~ 1.0)
-- **Arousal**: 감정의 활성화 정도 (-1.0 ~ 1.0)  
+- **Arousal**: 감정의 활성화 정도 (-1.0 ~ 1.0)
 - **Dominance**: 감정의 지배/통제 정도 (-1.0 ~ 1.0)
 
 ```python
@@ -162,6 +162,7 @@ emotion = EmotionEmbedding(
 ## 📊 데이터베이스 구조
 
 ### 감정 히스토리 테이블
+
 ```sql
 CREATE TABLE emotion_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +179,7 @@ CREATE TABLE emotion_history (
 ```
 
 ### 피드백 히스토리 테이블
+
 ```sql
 CREATE TABLE feedback_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -233,12 +235,14 @@ preference_weights = {
 ### 일반적인 오류
 
 1. **GPU 메모리 부족**
+
    ```bash
    # 더 작은 해상도로 생성
    python main.py --user-id "test" --text "테스트" --width 256 --height 256
    ```
 
 2. **라이브러리 누락**
+
    ```bash
    # 필수 라이브러리 설치 확인
    python main.py --help
@@ -261,30 +265,6 @@ tail -f emotion_therapy.log
 # 오류 로그만 확인
 grep "ERROR" emotion_therapy.log
 ```
-
-## 🤝 기여하기
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📜 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
-
-## 📞 지원 및 문의
-
-- 🐛 버그 리포트: [Issues](https://github.com/your-repo/Emoseum-image-gen/issues)
-- 💡 기능 제안: [Discussions](https://github.com/your-repo/Emoseum-image-gen/discussions)
-- 📧 이메일: your-email@example.com
-
-## 🙏 감사의 말
-
-- [Hugging Face](https://huggingface.co/) - Transformers 및 Diffusers 라이브러리
-- [Stability AI](https://stability.ai/) - Stable Diffusion 모델
-- [Microsoft PEFT](https://github.com/huggingface/peft) - LoRA 어댑터 지원
 
 ---
 
