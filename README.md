@@ -1,203 +1,291 @@
-# Emoseum Image Generation Model
+# Emoseum 감정 기반 디지털 치료 이미지 생성 시스템
 
-**감정 기반 치료적 이미지 생성을 위한 AI 모델 구현**
+![Emoseum Banner](https://img.shields.io/badge/Emoseum-AI%20감정%20치료-blue)
+![Python](https://img.shields.io/badge/Python-3.8+-green)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
-본 저장소는 'Emoseum: AI 기반 감정 갤러리' 프로젝트의 **핵심 이미지 생성 모델**을 구현합니다. 사용자의 감정 일기를 분석하여 치료적 효과가 있는 개인 맞춤형 이미지를 생성하는 AI 모델의 실제 구현체입니다.
+## 🌟 개요
 
-## 🧠 핵심 모델 구현
+Emoseum은 **감정 일기 텍스트**를 분석하여 **개인화된 치료용 이미지**를 생성하는 AI 기반 디지털 치료 시스템입니다. VAD(Valence-Arousal-Dominance) 감정 모델과 Stable Diffusion을 결합하여 사용자의 감정 상태에 맞는 맞춤형 이미지를 생성하고, 강화학습을 통해 지속적으로 개인화됩니다.
 
-**메인 클래스 (`therapy_system.py`)**
+### ✨ 주요 특징
 
-- `HybridEmotionTherapySystem`: 감정 분석과 이미지 생성을 통합한 메인 시스템
-- `EmotionEmbedding`: VAD 모델 기반 감정 벡터 표현
-- `DRaFT (Direct Reward Fine-Tuning)`: 사용자 피드백 기반 모델 개인화
-- `LoRA Adapter`: 개인별 이미지 생성 스타일 맞춤화
+- 🧠 **고급 감정 분석**: VAD 모델 기반 3차원 감정 공간 분석
+- 🎨 **AI 이미지 생성**: Stable Diffusion 1.5 기반 치료용 이미지 생성
+- 👤 **개인화 학습**: LoRA 어댑터와 DRaFT+ 강화학습을 통한 개인 맞춤화
+- 📊 **치료 진행 추적**: SQLite 기반 감정 히스토리 및 치료 진행도 관리
+- 💻 **CLI 인터페이스**: 터미널 기반 사용자 친화적 인터페이스
 
-**1. 감정 분석 파이프라인**
+## 🏗️ 시스템 아키텍처
 
-- 자연어 처리를 통한 감정 키워드 추출
-- VAD(Valence-Arousal-Dominance) 모델 기반 감정 상태 수치화
-- 개인 감정 패턴 학습 및 저장
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Emoseum 시스템                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                           │
+│  📝 텍스트 입력 → 😊 감정 분석 → 🎨 이미지 생성 → 📊 피드백    │
+│                                                           │
+├─────────────────────────────────────────────────────────────┤
+│  주요 컴포넌트:                                              │
+│  • AdvancedEmotionMapper (VAD 감정 분석)                    │
+│  • PersonalizedLoRAManager (개인화 어댑터)                   │
+│  • DRaFTPlusRewardModel (강화학습 보상)                      │
+│  • UserEmotionProfile (사용자 프로파일)                      │
+│  • EmotionalImageTherapySystem (통합 시스템)                 │
+└─────────────────────────────────────────────────────────────┘
+```
 
-**2. 이미지 생성 엔진**
+## 🚀 설치 및 설정
 
-- Stable Diffusion 기반 맞춤형 감정 이미지 생성
-- 감정 상태와 연동된 프롬프트 자동 생성
-- 개인화된 LoRA 어댑터 적용
+### 필수 요구사항
 
-**3. 개인화 학습 시스템**
+- Python 3.8 이상
+- PyTorch 2.0 이상
+- CUDA 지원 GPU (권장) 또는 Apple Silicon Mac (MPS 지원)
+- 최소 8GB RAM (GPU 메모리 포함)
 
-- 사용자 피드백 기반 DRaFT 파인튜닝
-- 개인별 선호도 반영 모델 업데이트
-- 지속적 학습을 통한 치료 효과 최적화
-
-## 🔬 연구 배경
-
-본 모델은 다음과 같은 선행 연구들을 기반으로 개발되었습니다:
-
-1. **AI 기반 글쓰기**: 감정 조절 능력 향상에 긍정적 영향
-2. **텍스트 기반 AI 이미지 생성**: 메타인지 능력 자극을 통한 인지 왜곡 완화
-3. **미술 치료**: 시각적 예술 창작을 통한 자기 인식과 감정 표현 촉진
-4. **한국 우울증 현황**: 지속적인 유병률 증가에 따른 효과적 대응 방안 필요
-
-## 🎯 모델 특징
-
-**자기 통찰력 증진**
-
-- 감정 상태의 시각적 표현을 통한 메타인지 능력 향상
-- 개인 감정 패턴의 객관적 분석 및 추적
-- 정서 변화와 회복 과정의 체계적 모니터링
-
-**개인화 학습**
-
-- 사용자별 맞춤형 LoRA 어댑터 생성
-- 피드백 기반 지속적 모델 개선
-- 개인 선호도와 치료 효과 최적화
-
-**치료적 효과**
-
-- 감정 표현 및 인식 능력 향상
-- 우울 상태 조기 감지 및 대응
-- 예방적 정신건강 관리 지원
-
-## 🔧 기술 스택
-
-**AI/ML 프레임워크**
-
-- **PyTorch**: 딥러닝 모델 구현
-- **Transformers**: 자연어 처리 및 감정 분석
-- **Diffusers**: Stable Diffusion 이미지 생성
-- **PEFT**: LoRA 기반 개인화 파인튜닝
-
-**감정 분석**
-
-- **CLIP**: 텍스트-이미지 연동 임베딩
-- **Custom VAD Model**: Valence-Arousal-Dominance 분석
-
-**데이터 처리**
-
-- **SQLite**: 사용자 프로필 및 학습 데이터 저장
-- **NumPy/SciPy**: 수치 연산 및 데이터 처리
-
-## 📋 모델 요구사항
-
-- Python 3.8+
-- NVIDIA GPU (권장, CUDA 11.8+)
-- 최소 12GB VRAM (개인화 학습 시)
-- 최소 16GB RAM
-- 최소 15GB 디스크 공간 (모델 가중치 저장용)
-
-## 🚀 모델 실행
-
-### 1. 환경 설정
+### 라이브러리 설치
 
 ```bash
-git clone <repository-url>
+# 기본 의존성 설치
+pip install torch torchvision torchaudio
+
+# AI/ML 라이브러리
+pip install transformers diffusers accelerate
+
+# 개인화 및 강화학습
+pip install peft
+
+# 이미지 처리 및 유틸리티
+pip install pillow numpy opencv-python
+
+# 데이터베이스 (SQLite는 Python 기본 포함)
+```
+
+### 프로젝트 클론 및 초기화
+
+```bash
+git clone https://github.com/your-repo/Emoseum-image-gen.git
 cd Emoseum-image-gen
-python -m venv venv
-source venv/bin/activate  # macOS/Linux
-pip install -r requirements.txt
+
+# 필요한 디렉토리 생성
+mkdir -p generated_images user_loras
+
+# 시스템 요구사항 확인
+python main.py --help
 ```
 
-### 2. 모델 테스트 (웹 데모)
+## 💻 사용법
+
+### 기본 이미지 생성
 
 ```bash
-# 웹 인터페이스를 통한 모델 테스트
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# 감정 일기를 통한 이미지 생성
+python main.py --user-id "alice" --text "오늘 하루 정말 행복했다"
+
+# 추가 프롬프트와 함께 생성
+python main.py --user-id "bob" --text "스트레스가 심하다" --prompt "평온한 자연 풍경"
+
+# 고품질 이미지 생성 (더 많은 스텝)
+python main.py --user-id "carol" --text "우울한 기분" --steps 25 --guidance 8.0
 ```
 
-### 3. 직접 모델 사용
+### 사용자 피드백 및 개인화 학습
+
+```bash
+# 긍정적 피드백 (1.0-5.0 척도)
+python main.py --user-id "alice" --emotion-id 1 --feedback-score 4.8 --comments "정말 마음에 든다"
+
+# 부정적 피드백을 통한 모델 개선
+python main.py --user-id "bob" --emotion-id 2 --feedback-score 2.3
+
+# 학습 없이 피드백만 저장
+python main.py --user-id "carol" --emotion-id 3 --feedback-score 3.5 --no-training
+```
+
+### 치료 진행도 및 인사이트
+
+```bash
+# 종합 치료 인사이트 확인
+python main.py --user-id "alice" --insights
+
+# 감정 히스토리 조회 (최근 10개)
+python main.py --user-id "alice" --history 10
+
+# 시스템 정리 (30일 이상 된 이미지 삭제)
+python main.py --user-id "admin" --cleanup 30
+```
+
+### 고급 옵션
+
+```bash
+# 커스텀 모델 사용
+python main.py --user-id "alice" --text "행복한 하루" --model "runwayml/stable-diffusion-v1-5"
+
+# 고해상도 이미지 생성
+python main.py --user-id "bob" --text "평온함" --width 768 --height 768
+
+# 상세 로그 출력
+python main.py --user-id "carol" --text "기쁨" --verbose
+```
+
+## 🧠 핵심 기술
+
+### 1. VAD 감정 모델
+
+- **Valence**: 감정의 긍정/부정 정도 (-1.0 ~ 1.0)
+- **Arousal**: 감정의 활성화 정도 (-1.0 ~ 1.0)  
+- **Dominance**: 감정의 지배/통제 정도 (-1.0 ~ 1.0)
 
 ```python
-from therapy_system import HybridEmotionTherapySystem
-
-# 시스템 초기화
-therapy_system = HybridEmotionTherapySystem()
-
-# 이미지 생성
-image, emotion, metadata = therapy_system.generate_therapeutic_image(
-    user_id="test_user",
-    diary_text="오늘은 기분이 좋지 않았다. 모든 일이 잘못되는 것 같다.",
-    base_prompt="digital art, therapeutic image"
+# 감정 분석 예시
+emotion = EmotionEmbedding(
+    valence=0.8,    # 매우 긍정적
+    arousal=0.6,    # 다소 흥미로운
+    dominance=0.4   # 적당히 통제감 있는
 )
-
-# 피드백 학습
-therapy_system.train_with_user_feedback(
-    user_id="test_user",
-    diary_text="오늘은 기분이 좋지 않았다.",
-    feedback_score=3.5
-)
 ```
 
-## 📁 코드 구조
+### 2. 개인화 시스템
 
+- **LoRA 어댑터**: 사용자별 모델 파라미터 세밀 조정
+- **선호도 학습**: 색온도, 밝기, 채도, 대비, 복잡성 등 시각적 선호도 학습
+- **적응형 프롬프트**: 감정과 개인 선호도를 결합한 동적 프롬프트 생성
+
+### 3. DRaFT+ 강화학습
+
+- **다차원 보상**: 감정 정확도 + 미적 품질 + 개인화 점수 + 다양성
+- **실시간 학습**: 사용자 피드백을 즉시 반영하는 온라인 학습
+- **안정성 보장**: 점진적 학습률과 정규화를 통한 안정적 개선
+
+## 📊 데이터베이스 구조
+
+### 감정 히스토리 테이블
+```sql
+CREATE TABLE emotion_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    input_text TEXT,
+    valence REAL,
+    arousal REAL,
+    dominance REAL,
+    confidence REAL,
+    generated_prompt TEXT,
+    image_path TEXT
+);
 ```
-Emoseum-image-gen/
-├── therapy_system.py       # 🔥 핵심 AI 모델 구현
-├── main.py                 # 웹 데모 인터페이스 (테스트용)
-├── requirements.txt        # 의존성 패키지
-├── user_profiles.db       # 사용자 데이터 (로컬 저장)
-├── generated_images/      # 생성된 이미지 샘플
-├── user_adapters/         # 개인화 모델 어댑터
-├── templates/             # 웹 데모 템플릿 (테스트용)
-└── static/               # 웹 데모 리소스 (테스트용)
+
+### 피드백 히스토리 테이블
+```sql
+CREATE TABLE feedback_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    emotion_id INTEGER,
+    timestamp TEXT NOT NULL,
+    feedback_score REAL,
+    feedback_type TEXT,
+    comments TEXT,
+    FOREIGN KEY (emotion_id) REFERENCES emotion_history (id)
+);
 ```
 
-## 🧪 모델 평가
+## 🔧 설정 및 커스터마이징
 
-**성능 지표**
-
-- 감정 분석 정확도
-- 이미지-텍스트 일치도 (CLIP Score)
-- 사용자 만족도 (피드백 점수)
-- 개인화 학습 수렴 속도
-
-**테스트 방법**
-
-1. 웹 인터페이스를 통한 실시간 테스트
-2. 배치 처리를 통한 대량 데이터 실험
-3. 사용자 연구를 통한 치료 효과 검증
-
-## 🔧 개발자 API
-
-### 주요 클래스
-
-**HybridEmotionTherapySystem**
+### 감정 어휘 사전 확장
 
 ```python
-generate_therapeutic_image(user_id, diary_text, base_prompt)
-train_with_user_feedback(user_id, diary_text, feedback_score)
-update_user_feedback(user_id, image, emotion, diary_text, score)
-```
-
-**EmotionEmbedding**
-
-```python
-from_text(text) -> EmotionEmbedding
-to_vector() -> List[float]
-valence, arousal, dominance  # VAD 점수
-```
-
-## 📚 참고문헌
-
-[1] AI 기반 글쓰기의 감정 조절 효과 연구  
-[2] 텍스트-이미지 생성 AI의 메타인지 능력 향상 효과  
-[3] 미술 치료의 정서적 안정 및 자아 정체성 확립 효과  
-[4] 한국 우울증 유병률 현황 및 대응 방안  
-[5] LoRA 기반 개인화 학습의 치료적 효과  
-[6] VAD 모델을 활용한 감정 상태 수치화 연구
-
-## 📄 라이선스
-
-이 모델 구현은 연구 목적으로 개발되었으며, MIT 라이선스 하에 배포됩니다.
-
-**Citation**
-
-```bibtex
-@misc{emoseum2025,
-  title={Emoseum: AI-based Emotion Gallery for Digital Therapeutics},
-  author={Research Team},
-  year={2025},
-  url={https://github.com/your-repo/Emoseum-image-gen}
+# main.py의 AdvancedEmotionMapper 클래스에서 수정 가능
+emotion_lexicon = {
+    "기쁨": EmotionEmbedding(0.8, 0.6, 0.4),
+    "슬픔": EmotionEmbedding(-0.7, -0.3, -0.5),
+    # 새로운 감정 추가...
 }
 ```
+
+### 개인화 가중치 조정
+
+```python
+# 사용자 선호도 가중치
+preference_weights = {
+    "color_temperature": 0.0,  # -1.0 (차가운) to 1.0 (따뜻한)
+    "brightness": 0.0,         # -1.0 (어두운) to 1.0 (밝은)
+    "saturation": 0.0,         # -1.0 (무채색) to 1.0 (채도 높은)
+    "contrast": 0.0,           # -1.0 (낮은 대비) to 1.0 (높은 대비)
+    "complexity": 0.0,         # -1.0 (단순) to 1.0 (복잡)
+    "art_style": "realistic",  # realistic, abstract, impressionist
+    "composition": "balanced", # minimal, balanced, complex
+}
+```
+
+## 📈 치료 효과 지표
+
+시스템은 다음과 같은 치료 효과 지표를 추적합니다:
+
+- **감정 트렌드**: 시간에 따른 감정 변화 추이
+- **안정성 점수**: 감정 변동성의 감소 정도
+- **참여도**: 사용자의 지속적 사용 및 피드백 제공률
+- **회복 지표**: 긍정적 피드백 비율과 감정 개선 종합 점수
+
+## 🚨 문제 해결
+
+### 일반적인 오류
+
+1. **GPU 메모리 부족**
+   ```bash
+   # 더 작은 해상도로 생성
+   python main.py --user-id "test" --text "테스트" --width 256 --height 256
+   ```
+
+2. **라이브러리 누락**
+   ```bash
+   # 필수 라이브러리 설치 확인
+   python main.py --help
+   ```
+
+3. **모델 다운로드 실패**
+   ```bash
+   # 인터넷 연결 확인 및 Hugging Face 계정 설정
+   huggingface-cli login
+   ```
+
+### 로그 확인
+
+상세한 로그는 `emotion_therapy.log` 파일에서 확인할 수 있습니다:
+
+```bash
+# 실시간 로그 확인
+tail -f emotion_therapy.log
+
+# 오류 로그만 확인
+grep "ERROR" emotion_therapy.log
+```
+
+## 🤝 기여하기
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## 📜 라이선스
+
+이 프로젝트는 MIT 라이선스 하에 배포됩니다. 자세한 내용은 `LICENSE` 파일을 참조하세요.
+
+## 📞 지원 및 문의
+
+- 🐛 버그 리포트: [Issues](https://github.com/your-repo/Emoseum-image-gen/issues)
+- 💡 기능 제안: [Discussions](https://github.com/your-repo/Emoseum-image-gen/discussions)
+- 📧 이메일: your-email@example.com
+
+## 🙏 감사의 말
+
+- [Hugging Face](https://huggingface.co/) - Transformers 및 Diffusers 라이브러리
+- [Stability AI](https://stability.ai/) - Stable Diffusion 모델
+- [Microsoft PEFT](https://github.com/huggingface/peft) - LoRA 어댑터 지원
+
+---
+
+> **주의**: 이 시스템은 연구 및 교육 목적으로 개발되었습니다. 실제 의료 또는 심리 치료를 대체하지 않으며, 전문적인 상담이 필요한 경우 의료진과 상의하시기 바랍니다.
