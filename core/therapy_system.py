@@ -158,19 +158,26 @@ class EmotionalImageTherapySystem:
             if not base_prompt:
                 base_prompt = "digital art, beautiful scene"
 
-            final_prompt = f"{base_prompt}, {emotion_modifiers}, {personal_modifiers}"
+            # 일관된 테마 적용
+            style_prompt = "watercolor, pastel tone"
+            
+            final_prompt = f"{base_prompt}, {style_prompt}, {emotion_modifiers}, {personal_modifiers}"
             final_prompt += ", high quality, detailed, masterpiece"
 
             logger.info(f"🎯 최종 프롬프트: {final_prompt}")
 
             # 4. 이미지 생성
             if self.pipeline:
+                # 부정 프롬프트 추가
+                negative_prompt = "photorealistic, 3d render, harsh lighting, ugly, deformed, noisy, blurry"
+                
                 # SD 파이프라인 사용
                 with torch.autocast(
                     self.device.type if self.device.type != "mps" else "cpu"
                 ):
                     result = self.pipeline(
                         prompt=final_prompt,
+                        negative_prompt=negative_prompt,
                         num_inference_steps=num_inference_steps,
                         guidance_scale=guidance_scale,
                         width=width,
