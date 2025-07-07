@@ -25,6 +25,7 @@ from models.emotion_mapper import AdvancedEmotionMapper
 from models.user_profile import UserEmotionProfile
 from models.lora_manager import PersonalizedLoRAManager
 from models.reward_model import DRaFTPlusRewardModel
+from models.smart_feedback_system import FeedbackEnhancer
 from training.trainer import DRaFTPlusTrainer
 
 # 경고 메시지 억제
@@ -83,6 +84,9 @@ class EmotionalImageTherapySystem:
 
         # 5. 사용자 프로파일 캐시
         self.user_profiles = {}
+        
+        # 6. 스마트 피드백 시스템
+        self.feedback_enhancer = FeedbackEnhancer()
 
         logger.info("✅ 시스템 초기화 완료!")
 
@@ -299,22 +303,73 @@ class EmotionalImageTherapySystem:
         feedback_type: str = "rating",
         comments: str = None,
         enable_training: bool = True,
+        interaction_metadata: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        """사용자 피드백 처리 및 개인화 학습"""
+        """사용자 피드백 처리 및 개인화 학습 (스마트 피드백 적용)"""
 
         try:
             logger.info(f"📝 사용자 {user_id} 피드백 처리: 점수 {feedback_score}")
 
             # 1. 사용자 프로파일 로드
             user_profile = self.get_user_profile(user_id)
+            
+            # 2. 해당 감정 기록 찾기 (스마트 피드백을 위해)
+            target_emotion_record = None
+            for record in user_profile.emotion_history:
+                if record.get("id") == emotion_id:
+                    target_emotion_record = record
+                    break
+            
+            # 3. 스마트 피드백 향상 처리
+            enhanced_feedback = None
+            if target_emotion_record:
+                try:
+                    # 상호작용 메타데이터 기본값 설정
+                    if interaction_metadata is None:
+                        interaction_metadata = {
+                            "viewing_time": 5.0,  # 기본 5초
+                            "response_time": 10.0,
+                            "hesitation_count": 0
+                        }
+                    
+                    # 이미지 메타데이터 추출
+                    image_metadata = target_emotion_record.get("image_metadata", {
+                        "brightness": 0.5,
+                        "saturation": 0.5,
+                        "contrast": 0.5
+                    })
+                    
+                    # 스마트 피드백 향상
+                    enhanced_feedback = self.feedback_enhancer.enhance_simple_feedback(
+                        simple_score=feedback_score,
+                        user_emotion=target_emotion_record["emotion"],
+                        image_metadata=image_metadata,
+                        user_history=user_profile.emotion_history,
+                        interaction_time=interaction_metadata.get("viewing_time", 5.0)
+                    )
+                    
+                    logger.info(f"✅ 스마트 피드백 향상 완료: {len(enhanced_feedback.get('inferred_aspects', {}))}개 선호도 추론")
+                    
+                except Exception as e:
+                    logger.warning(f"⚠️ 스마트 피드백 향상 실패: {e}, 기본 피드백 사용")
+                    enhanced_feedback = None
 
-            # 2. 피드백 저장
+            # 4. 기본 피드백 저장 (기존 방식 유지)
             user_profile.add_feedback(
                 emotion_id=emotion_id,
                 feedback_score=feedback_score,
                 feedback_type=feedback_type,
                 comments=comments,
             )
+            
+            # 5. 향상된 피드백 정보를 적응형 시스템에 추가로 제공
+            if enhanced_feedback and hasattr(user_profile, 'adaptive_system'):
+                try:
+                    self._apply_enhanced_feedback_to_adaptive_system(
+                        user_profile, target_emotion_record, enhanced_feedback
+                    )
+                except Exception as e:
+                    logger.warning(f"⚠️ 향상된 피드백 적용 실패: {e}")
 
             # 3. 강화학습 수행 (옵션)
             training_result = None
@@ -358,6 +413,27 @@ class EmotionalImageTherapySystem:
                 "total_feedbacks": len(user_profile.feedback_history),
             }
 
+            # 7. 결과에 향상된 피드백 정보 포함
+            result = {
+                "success": True,
+                "feedback_recorded": True,
+                "training_performed": training_result is not None,
+                "training_result": training_result,
+                "therapeutic_insights": insights,
+                "total_interactions": len(user_profile.emotion_history),
+                "total_feedbacks": len(user_profile.feedback_history),
+            }
+            
+            # 향상된 피드백 정보 추가
+            if enhanced_feedback:
+                result["enhanced_feedback"] = {
+                    "emotion_alignment": enhanced_feedback["enhanced_insights"].get("emotion_alignment"),
+                    "visual_preferences": enhanced_feedback["enhanced_insights"].get("visual_preferences"),
+                    "engagement_analysis": enhanced_feedback["enhanced_insights"].get("engagement"),
+                    "inferred_preferences": enhanced_feedback["inferred_aspects"]
+                }
+                logger.info("✅ 향상된 피드백 정보 포함")
+
             logger.info("✅ 피드백 처리 완료")
             return result
 
@@ -369,6 +445,68 @@ class EmotionalImageTherapySystem:
                 "feedback_recorded": False,
                 "training_performed": False,
             }
+    
+    def _apply_enhanced_feedback_to_adaptive_system(
+        self,
+        user_profile: UserEmotionProfile,
+        emotion_record: Dict[str, Any],
+        enhanced_feedback: Dict[str, Any]
+    ):
+        """향상된 피드백 정보를 적응형 시스템에 적용"""
+        
+        try:
+            # 추론된 선호도 정보 추출
+            inferred_aspects = enhanced_feedback.get("inferred_aspects", {})
+            enhanced_insights = enhanced_feedback.get("enhanced_insights", {})
+            
+            # 추가 메타데이터 구성
+            enhanced_metadata = emotion_record.get("image_metadata", {}).copy()
+            
+            # 추론된 선호도를 메타데이터에 추가
+            if "preferred_brightness" in inferred_aspects:
+                brightness_map = {"bright": 0.8, "dim": 0.3, "normal": 0.5}
+                enhanced_metadata["inferred_brightness_pref"] = brightness_map.get(
+                    inferred_aspects["preferred_brightness"], 0.5
+                )
+            
+            if "preferred_saturation" in inferred_aspects:
+                saturation_map = {"vibrant": 0.8, "muted": 0.3, "normal": 0.5}
+                enhanced_metadata["inferred_saturation_pref"] = saturation_map.get(
+                    inferred_aspects["preferred_saturation"], 0.5
+                )
+            
+            # 참여도 정보 추가
+            engagement = enhanced_insights.get("engagement", {})
+            if engagement:
+                enhanced_metadata["engagement_level"] = {
+                    "high": 0.8, "appropriate": 0.6, "low": 0.3
+                }.get(engagement.get("engagement_level"), 0.5)
+                
+                enhanced_metadata["viewing_time_normalized"] = min(
+                    engagement.get("viewing_time", 5.0) / 20.0, 1.0
+                )
+            
+            # 감정-점수 일치도 정보
+            emotion_alignment = enhanced_insights.get("emotion_alignment", {})
+            if emotion_alignment:
+                enhanced_metadata["emotion_score_gap"] = emotion_alignment.get("gap", 0.0)
+                enhanced_metadata["therapeutic_effect"] = 1.0 if emotion_alignment.get("gap", 0) > 0.5 else 0.5
+            
+            # 적응형 시스템에 풍부한 정보로 피드백 재전송
+            if hasattr(user_profile, 'adaptive_system') and user_profile.adaptive_system:
+                user_profile.adaptive_system.add_feedback(
+                    user_id=user_profile.user_id,
+                    emotion=emotion_record["emotion"],
+                    image_metadata=enhanced_metadata,  # 향상된 메타데이터 사용
+                    prompt=emotion_record.get("generated_prompt", ""),
+                    feedback_score=enhanced_feedback["original_score"]
+                )
+                
+                logger.info("✅ 향상된 피드백 정보로 적응형 시스템 재학습 완료")
+            
+        except Exception as e:
+            logger.error(f"❌ 향상된 피드백 적용 실패: {e}")
+            raise
 
     def _save_user_lora_if_needed(self, user_id: str, user_profile: UserEmotionProfile):
         """필요시 사용자 LoRA 어댑터 저장"""
