@@ -12,6 +12,7 @@ from models.improved_evaluators import (
     ImprovedEmotionEvaluator,
     ImprovedPersonalizationEvaluator
 )
+from models.improved_diversity_evaluator import ImprovedDiversityEvaluator
 
 __all__ = [
     "EmotionEmbedding",
@@ -21,4 +22,5 @@ __all__ = [
     "ImprovedAestheticEvaluator",
     "ImprovedEmotionEvaluator",
     "ImprovedPersonalizationEvaluator",
+    "ImprovedDiversityEvaluator",
 ]
