@@ -71,7 +71,6 @@ except ImportError:
     PEFT_AVAILABLE = False
 
 # 기본 설정 값들
-DEFAULT_MODEL_NAME = "klue/roberta-large"
 DEFAULT_DIFFUSION_MODEL = "runwayml/stable-diffusion-v1-5"
 DEFAULT_STEPS = 15
 DEFAULT_GUIDANCE_SCALE = 7.5

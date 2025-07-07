@@ -8,26 +8,19 @@ import json
 import warnings
 from typing import Dict, List, Tuple, Optional
 import numpy as np
-import torch
-import torch.nn as nn
 
-from config import device, logger, TRANSFORMERS_AVAILABLE
+from config import logger
 from models.emotion import EmotionEmbedding
 
 # 경고 메시지 억제
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
-if TRANSFORMERS_AVAILABLE:
-    from transformers import AutoTokenizer, AutoModel
-
 
 class AdvancedEmotionMapper:
     """고급 VAD 기반 감정 매핑 시스템"""
 
-    def __init__(self, model_name="klue/roberta-large"):
-        self.device = device
-        self.model_name = model_name
+    def __init__(self):
 
         # 감정 어휘 사전 (한국어 + 영어)
         self.emotion_lexicon = {
@@ -117,71 +110,15 @@ class AdvancedEmotionMapper:
             "won't",
         }
 
-        # Transformer 모델 로드
-        self.use_transformer = TRANSFORMERS_AVAILABLE
-        if self.use_transformer:
-            try:
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-                self.text_encoder = AutoModel.from_pretrained(model_name).to(
-                    self.device
-                )
-                self.text_encoder.eval()
+        logger.info("✅ 규칙 기반 감정 분석 시스템 초기화 완료")
 
-                # VAD 예측 헤드
-                hidden_size = self.text_encoder.config.hidden_size
-                self.vad_predictor = nn.Sequential(
-                    nn.Linear(hidden_size, 512),
-                    nn.ReLU(),
-                    nn.Dropout(0.3),
-                    nn.Linear(512, 256),
-                    nn.ReLU(),
-                    nn.Dropout(0.3),
-                    nn.Linear(256, 128),
-                    nn.ReLU(),
-                    nn.Linear(128, 3),  # valence, arousal, dominance
-                    nn.Tanh(),
-                ).to(self.device)
-
-                # 간단한 가중치 초기화
-                self._init_vad_predictor()
-
-                logger.info(f"✅ 고급 감정 분석 모델 로드 완료: {model_name}")
-            except Exception as e:
-                logger.warning(
-                    f"⚠️ Transformer 모델 로드 실패: {e}, 규칙 기반 시스템 사용"
-                )
-                self.use_transformer = False
-
-    def _init_vad_predictor(self):
-        """VAD 예측기 초기화"""
-        for module in self.vad_predictor:
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                nn.init.zeros_(module.bias)
 
     def extract_emotion_from_text(self, text: str) -> EmotionEmbedding:
-        """텍스트에서 감정 추출 (다중 방법론 융합)"""
-        # 1. 규칙 기반 감정 분석
-        rule_based_emotion = self._rule_based_emotion_analysis(text)
+        """텍스트에서 감정 추출 (규칙 기반 시스템)"""
+        # 규칙 기반 감정 분석
+        final_emotion = self._rule_based_emotion_analysis(text)
 
-        # 2. Transformer 기반 분석 (가능한 경우)
-        if self.use_transformer:
-            try:
-                transformer_emotion = self._transformer_emotion_analysis(text)
-                # 두 결과를 가중 평균
-                final_emotion = self._combine_emotions(
-                    rule_based_emotion,
-                    transformer_emotion,
-                    rule_weight=0.4,
-                    transformer_weight=0.6,
-                )
-            except Exception as e:
-                logger.warning(f"Transformer 분석 실패: {e}, 규칙 기반 결과 사용")
-                final_emotion = rule_based_emotion
-        else:
-            final_emotion = rule_based_emotion
-
-        # 3. 후처리 및 정규화
+        # 후처리 및 정규화
         final_emotion = self._post_process_emotion(final_emotion, text)
 
         logger.info(
@@ -253,68 +190,7 @@ class AdvancedEmotionMapper:
 
         return EmotionEmbedding(avg_valence, avg_arousal, avg_dominance, confidence)
 
-    def _transformer_emotion_analysis(self, text: str) -> EmotionEmbedding:
-        """Transformer 기반 감정 분석"""
-        if not self.use_transformer:
-            return EmotionEmbedding(0.0, 0.0, 0.0, confidence=0.0)
 
-        # 토큰화 및 인코딩
-        inputs = self.tokenizer(
-            text, return_tensors="pt", max_length=512, truncation=True, padding=True
-        ).to(self.device)
-
-        with torch.no_grad():
-            # 텍스트 특성 추출
-            outputs = self.text_encoder(**inputs)
-            # CLS 토큰 또는 평균 풀링 사용
-            if hasattr(outputs, "pooler_output") and outputs.pooler_output is not None:
-                text_features = outputs.pooler_output
-            else:
-                text_features = outputs.last_hidden_state.mean(dim=1)
-
-            # VAD 예측
-            vad_scores = self.vad_predictor(text_features)
-            vad_scores = vad_scores.squeeze().cpu().numpy()
-
-        return EmotionEmbedding(
-            valence=float(vad_scores[0]),
-            arousal=float(vad_scores[1]),
-            dominance=float(vad_scores[2]),
-            confidence=0.8,
-        )
-
-    def _combine_emotions(
-        self,
-        emotion1: EmotionEmbedding,
-        emotion2: EmotionEmbedding,
-        rule_weight: float = 0.5,
-        transformer_weight: float = 0.5,
-    ) -> EmotionEmbedding:
-        """두 감정 분석 결과를 결합"""
-        total_weight = rule_weight + transformer_weight
-        rule_weight /= total_weight
-        transformer_weight /= total_weight
-
-        # 신뢰도 기반 가중치 조정
-        rule_conf_weight = rule_weight * emotion1.confidence
-        trans_conf_weight = transformer_weight * emotion2.confidence
-        total_conf_weight = rule_conf_weight + trans_conf_weight
-
-        if total_conf_weight > 0:
-            rule_conf_weight /= total_conf_weight
-            trans_conf_weight /= total_conf_weight
-        else:
-            rule_conf_weight = trans_conf_weight = 0.5
-
-        return EmotionEmbedding(
-            valence=emotion1.valence * rule_conf_weight
-            + emotion2.valence * trans_conf_weight,
-            arousal=emotion1.arousal * rule_conf_weight
-            + emotion2.arousal * trans_conf_weight,
-            dominance=emotion1.dominance * rule_conf_weight
-            + emotion2.dominance * trans_conf_weight,
-            confidence=min(1.0, emotion1.confidence + emotion2.confidence),
-        )
 
     def _post_process_emotion(
         self, emotion: EmotionEmbedding, text: str
