@@ -19,64 +19,17 @@ class DRaFTPlusRewardModel:
     def __init__(self, device: torch.device = None):
         self.device = device if device else torch.device("cpu")
 
-        # 감정 정확도 평가기
-        self.emotion_evaluator = self._build_emotion_evaluator()
-
-        # 미적 품질 평가기
-        self.aesthetic_evaluator = self._build_aesthetic_evaluator()
-
-        # 개인화 점수 평가기
-        self.personalization_evaluator = self._build_personalization_evaluator()
+        # 개선된 평가기들
+        self.aesthetic_evaluator = ImprovedAestheticEvaluator()
+        self.emotion_evaluator = ImprovedEmotionEvaluator()
+        self.personalization_evaluator = ImprovedPersonalizationEvaluator()
 
         # 다양성 평가기
         self.diversity_evaluator = self._build_diversity_evaluator()
 
-        logger.info("✅ DRaFT+ 보상 모델 초기화 완료")
+        logger.info("✅ 개선된 DRaFT+ 보상 모델 초기화 완료")
 
-    def _build_emotion_evaluator(self) -> nn.Module:
-        """감정 정확도 평가기"""
-        return nn.Sequential(
-            nn.Linear(768, 512),  # CLIP 임베딩 크기 가정
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, 3),  # VAD 예측
-            nn.Tanh(),
-        ).to(self.device)
-
-    def _build_aesthetic_evaluator(self) -> nn.Module:
-        """미적 품질 평가기"""
-        return nn.Sequential(
-            nn.Conv2d(3, 32, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(32, 64, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 4)),
-            nn.Flatten(),
-            nn.Linear(128 * 4 * 4, 256),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(256, 1),
-            nn.Sigmoid(),
-        ).to(self.device)
-
-    def _build_personalization_evaluator(self) -> nn.Module:
-        """개인화 점수 평가기"""
-        return nn.Sequential(
-            nn.Linear(512 + 7, 256),  # 이미지 특성 + 개인화 선호도
-            nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1),
-            nn.Sigmoid(),
-        ).to(self.device)
+    # 기존 단순한 평가기 빌더들은 개선된 평가기로 대체됨
 
     def _build_diversity_evaluator(self) -> nn.Module:
         """다양성 평가기"""
@@ -101,16 +54,16 @@ class DRaFTPlusRewardModel:
 
         try:
             with torch.no_grad():
-                # 1. 감정 정확도 보상
-                emotion_reward = self._calculate_emotion_reward(
+                # 1. 감정 정확도 보상 (개선된 평가기)
+                emotion_reward = self.emotion_evaluator.evaluate(
                     generated_images, target_emotion
                 )
 
-                # 2. 미적 품질 보상
-                aesthetic_reward = self._calculate_aesthetic_reward(generated_images)
+                # 2. 미적 품질 보상 (개선된 평가기)
+                aesthetic_reward = self.aesthetic_evaluator.evaluate(generated_images)
 
-                # 3. 개인화 보상
-                personalization_reward = self._calculate_personalization_reward(
+                # 3. 개인화 보상 (개선된 평가기)
+                personalization_reward = self.personalization_evaluator.evaluate(
                     generated_images, user_profile
                 )
 
@@ -136,90 +89,7 @@ class DRaFTPlusRewardModel:
             logger.warning(f"⚠️ 보상 계산 실패: {e}, 기본값 반환")
             return torch.tensor([0.5] * batch_size, device=self.device)
 
-    def _calculate_emotion_reward(
-        self, images: torch.Tensor, target_emotion: EmotionEmbedding
-    ) -> torch.Tensor:
-        """감정 정확도 기반 보상"""
-        batch_size = images.shape[0]
-
-        # 간단한 이미지 특성 추출 (실제로는 CLIP 등 사용)
-        image_features = self._extract_simple_features(images)
-
-        # 목표 감정과의 일치도 계산
-        target_vector = torch.tensor(
-            [target_emotion.valence, target_emotion.arousal, target_emotion.dominance],
-            device=self.device,
-        ).repeat(batch_size, 1)
-
-        predicted_emotions = self.emotion_evaluator(image_features)
-        emotion_distance = F.mse_loss(
-            predicted_emotions, target_vector, reduction="none"
-        ).mean(dim=1)
-
-        # 거리를 보상으로 변환 (거리가 클수록 보상 낮음)
-        emotion_reward = torch.exp(-emotion_distance * 2.0)
-
-        return emotion_reward
-
-    def _calculate_aesthetic_reward(self, images: torch.Tensor) -> torch.Tensor:
-        """미적 품질 보상"""
-        # 이미지 크기 조정 (필요시)
-        if images.shape[-1] != 64:  # 예시 크기
-            images_resized = F.interpolate(
-                images, size=(64, 64), mode="bilinear", align_corners=False
-            )
-        else:
-            images_resized = images
-
-        aesthetic_scores = self.aesthetic_evaluator(images_resized).squeeze()
-
-        # 배치 차원 보장
-        if aesthetic_scores.dim() == 0:
-            aesthetic_scores = aesthetic_scores.unsqueeze(0)
-
-        return aesthetic_scores
-
-    def _calculate_personalization_reward(
-        self, images: torch.Tensor, user_profile: UserEmotionProfile
-    ) -> torch.Tensor:
-        """개인화 보상"""
-        batch_size = images.shape[0]
-
-        # 이미지 특성 추출
-        image_features = self._extract_simple_features(images)
-
-        # 사용자 선호도 벡터 생성
-        preference_vector = torch.tensor(
-            [
-                user_profile.preference_weights["color_temperature"],
-                user_profile.preference_weights["brightness"],
-                user_profile.preference_weights["saturation"],
-                user_profile.preference_weights["contrast"],
-                user_profile.preference_weights["complexity"],
-                (
-                    1.0
-                    if user_profile.preference_weights["art_style"] == "realistic"
-                    else 0.0
-                ),
-                (
-                    1.0
-                    if user_profile.preference_weights["composition"] == "balanced"
-                    else 0.0
-                ),
-            ],
-            device=self.device,
-        ).repeat(batch_size, 1)
-
-        # 개인화 특성과 결합
-        combined_features = torch.cat([image_features, preference_vector], dim=1)
-        personalization_scores = self.personalization_evaluator(
-            combined_features
-        ).squeeze()
-
-        if personalization_scores.dim() == 0:
-            personalization_scores = personalization_scores.unsqueeze(0)
-
-        return personalization_scores
+    # 기존 개별 평가 메서드들은 개선된 평가기로 대체됨
 
     def _calculate_diversity_reward(
         self, images: torch.Tensor, previous_images: List[torch.Tensor] = None

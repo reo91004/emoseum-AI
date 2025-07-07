@@ -7,10 +7,18 @@ from models.emotion import EmotionEmbedding
 from models.emotion_mapper import AdvancedEmotionMapper
 from models.user_profile import UserEmotionProfile
 from models.lora_manager import PersonalizedLoRAManager
+from models.improved_evaluators import (
+    ImprovedAestheticEvaluator,
+    ImprovedEmotionEvaluator,
+    ImprovedPersonalizationEvaluator
+)
 
 __all__ = [
     "EmotionEmbedding",
     "AdvancedEmotionMapper", 
     "UserEmotionProfile",
     "PersonalizedLoRAManager",
+    "ImprovedAestheticEvaluator",
+    "ImprovedEmotionEvaluator",
+    "ImprovedPersonalizationEvaluator",
 ]
