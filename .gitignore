@@ -213,7 +213,6 @@ Desktop.ini
 *~
 
 # AI model files (too large for git)
-models/
 *.bin
 *.h5
 *.pkl
@@ -224,3 +223,4 @@ config.json
 secrets.json
 .env.local
 .env.production
+.claude/
