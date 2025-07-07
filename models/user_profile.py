@@ -14,6 +14,7 @@ import numpy as np
 
 from config import logger
 from models.emotion import EmotionEmbedding
+from models.adaptive_personalization import AdaptivePersonalizationSystem
 
 
 class UserEmotionProfile:
@@ -24,6 +25,11 @@ class UserEmotionProfile:
         self.db_path = db_path
         self.emotion_history: List[Dict] = []
         self.feedback_history: List[Dict] = []
+        
+        # 적응형 개인화 시스템 (클래스 레벨에서 공유)
+        if not hasattr(UserEmotionProfile, '_adaptive_system'):
+            UserEmotionProfile._adaptive_system = AdaptivePersonalizationSystem()
+        self.adaptive_system = UserEmotionProfile._adaptive_system
 
         # 개인화 선호도 가중치
         self.preference_weights = {
@@ -300,38 +306,105 @@ class UserEmotionProfile:
             conn.close()
 
     def _update_preferences_from_feedback(self, feedback_score: float):
-        """피드백 점수를 기반으로 선호도 업데이트"""
-        learning_rate = 0.1
-
-        if feedback_score > 3.0:  # 긍정적 피드백 (1-5 척도)
+        """적응형 개인화 시스템을 사용한 선호도 업데이트"""
+        
+        if not self.emotion_history:
+            logger.warning("감정 히스토리가 없어 선호도 업데이트를 건너뜁니다")
+            return
+        
+        try:
+            # 최근 감정 기록 가져오기
+            recent_record = self.emotion_history[-1]
+            recent_emotion = recent_record["emotion"]
+            
+            # 이미지 메타데이터 준비 (실제 이미지 분석 결과가 있다면 사용)
+            image_metadata = recent_record.get("image_metadata", {
+                "brightness": 0.5,
+                "saturation": 0.5, 
+                "contrast": 0.5,
+                "hue_variance": 0.3,
+                "edge_density": 0.4,
+                "color_diversity": 0.6,
+                "composition_balance": 0.5,
+                "texture_complexity": 0.4
+            })
+            
+            # 프롬프트 정보
+            prompt = recent_record.get("generated_prompt", "")
+            
+            # 적응형 시스템에 피드백 추가
+            self.adaptive_system.add_feedback(
+                user_id=self.user_id,
+                emotion=recent_emotion,
+                image_metadata=image_metadata,
+                prompt=prompt,
+                feedback_score=feedback_score
+            )
+            
+            # 업데이트된 선호도 가져오기
+            updated_preferences = self.adaptive_system.get_user_preferences(self.user_id)
+            
+            # 기존 선호도 구조 업데이트
+            for key in self.preference_weights:
+                if isinstance(self.preference_weights[key], (int, float)):
+                    if key in updated_preferences:
+                        self.preference_weights[key] = updated_preferences[key]
+            
+            logger.info(f"✅ 적응형 개인화 시스템으로 사용자 {self.user_id} 선호도 업데이트 완료")
+            
+        except Exception as e:
+            logger.error(f"❌ 적응형 선호도 업데이트 실패: {e}")
+            # Fallback: 기존 하드코딩된 방식 사용
+            self._fallback_preference_update(feedback_score)
+    
+    def _fallback_preference_update(self, feedback_score: float):
+        """기존 하드코딩된 방식으로 폴백 (적응형 시스템 실패시)"""
+        
+        learning_rate = 0.05  # 더 보수적인 학습률
+        
+        if abs(feedback_score - 3.0) < 0.5:  # 중성 피드백은 무시
+            return
+        
+        if feedback_score > 3.0:  # 긍정적 피드백
             weight = (feedback_score - 3.0) / 2.0 * learning_rate
-
-            # 최근 감정 기반 선호도 조정
+            
             if self.emotion_history:
                 recent_emotion = self.emotion_history[-1]["emotion"]
-
-                # Valence 기반 밝기/채도 조정
-                if recent_emotion.valence > 0:
-                    self.preference_weights["brightness"] += weight * 0.1
-                    self.preference_weights["saturation"] += weight * 0.1
-                else:
-                    self.preference_weights["brightness"] -= weight * 0.05
-                    self.preference_weights["saturation"] -= weight * 0.05
-
-                # Arousal 기반 대비/복잡성 조정
-                if recent_emotion.arousal > 0:
-                    self.preference_weights["contrast"] += weight * 0.1
-                    self.preference_weights["complexity"] += weight * 0.05
-                else:
-                    self.preference_weights["contrast"] -= weight * 0.05
-                    self.preference_weights["complexity"] -= weight * 0.1
-
+                
+                # 더 세밀한 조정
+                emotion_strength = abs(recent_emotion.valence) + abs(recent_emotion.arousal) + abs(recent_emotion.dominance)
+                adaptive_weight = weight * min(emotion_strength, 1.0)
+                
+                # Valence 기반 조정 (더 보수적)
+                if recent_emotion.valence > 0.2:
+                    self.preference_weights["brightness"] += adaptive_weight * 0.05
+                    self.preference_weights["color_temperature"] += adaptive_weight * 0.03
+                elif recent_emotion.valence < -0.2:
+                    self.preference_weights["brightness"] -= adaptive_weight * 0.03
+                    self.preference_weights["saturation"] -= adaptive_weight * 0.02
+                
+                # Arousal 기반 조정
+                if recent_emotion.arousal > 0.2:
+                    self.preference_weights["contrast"] += adaptive_weight * 0.04
+                    self.preference_weights["saturation"] += adaptive_weight * 0.03
+                elif recent_emotion.arousal < -0.2:
+                    self.preference_weights["contrast"] -= adaptive_weight * 0.02
+                    self.preference_weights["complexity"] -= adaptive_weight * 0.03
+                
+                # Dominance 기반 조정
+                if recent_emotion.dominance > 0.2:
+                    self.preference_weights["complexity"] += adaptive_weight * 0.03
+                elif recent_emotion.dominance < -0.2:
+                    self.preference_weights["complexity"] -= adaptive_weight * 0.02
+        
         # 범위 제한
         for key in self.preference_weights:
             if isinstance(self.preference_weights[key], (int, float)):
                 self.preference_weights[key] = np.clip(
                     self.preference_weights[key], -1.0, 1.0
                 )
+        
+        logger.info(f"⚠️ 폴백 방식으로 사용자 {self.user_id} 선호도 업데이트")
 
     def _update_therapeutic_progress(self):
         """치료 진행도 업데이트"""
@@ -413,43 +486,112 @@ class UserEmotionProfile:
             conn.close()
 
     def get_personalized_style_modifiers(self) -> str:
-        """개인화된 스타일 수정자 생성"""
+        """적응형 개인화 기반 스타일 수정자 생성"""
         modifiers = []
-
-        # 색온도 기반
-        if self.preference_weights["color_temperature"] > 0.3:
+        
+        # 더 세밀한 임계값과 다양한 표현 사용
+        
+        # 색온도 기반 (더 세밀한 구분)
+        temp_val = self.preference_weights["color_temperature"]
+        if temp_val > 0.5:
+            modifiers.append("warm golden lighting")
+        elif temp_val > 0.2:
             modifiers.append("warm lighting")
-        elif self.preference_weights["color_temperature"] < -0.3:
+        elif temp_val < -0.5:
+            modifiers.append("cool blue lighting")
+        elif temp_val < -0.2:
             modifiers.append("cool lighting")
 
-        # 밝기 기반
-        if self.preference_weights["brightness"] > 0.3:
-            modifiers.append("bright")
-        elif self.preference_weights["brightness"] < -0.3:
-            modifiers.append("dim lighting")
+        # 밝기 기반 (감정 상태 고려)
+        brightness_val = self.preference_weights["brightness"]
+        if brightness_val > 0.5:
+            modifiers.append("bright, luminous")
+        elif brightness_val > 0.2:
+            modifiers.append("well-lit")
+        elif brightness_val < -0.5:
+            modifiers.append("moody, dim lighting")
+        elif brightness_val < -0.2:
+            modifiers.append("soft lighting")
 
-        # 채도 기반
-        if self.preference_weights["saturation"] > 0.3:
-            modifiers.append("vibrant colors")
-        elif self.preference_weights["saturation"] < -0.3:
-            modifiers.append("muted colors")
+        # 채도 기반 (개인 취향 반영)
+        saturation_val = self.preference_weights["saturation"]
+        if saturation_val > 0.5:
+            modifiers.append("vibrant, rich colors")
+        elif saturation_val > 0.2:
+            modifiers.append("colorful")
+        elif saturation_val < -0.5:
+            modifiers.append("desaturated, muted palette")
+        elif saturation_val < -0.2:
+            modifiers.append("subtle colors")
 
-        # 대비 기반
-        if self.preference_weights["contrast"] > 0.3:
-            modifiers.append("high contrast")
-        elif self.preference_weights["contrast"] < -0.3:
-            modifiers.append("soft contrast")
+        # 대비 기반 (드라마틱함 조절)
+        contrast_val = self.preference_weights["contrast"]
+        if contrast_val > 0.5:
+            modifiers.append("dramatic contrast")
+        elif contrast_val > 0.2:
+            modifiers.append("clear contrast")
+        elif contrast_val < -0.5:
+            modifiers.append("soft, gentle contrast")
+        elif contrast_val < -0.2:
+            modifiers.append("low contrast")
 
-        # 복잡성 기반
-        if self.preference_weights["complexity"] > 0.3:
+        # 복잡성 기반 (개인 선호도 반영)
+        complexity_val = self.preference_weights["complexity"]
+        if complexity_val > 0.5:
+            modifiers.append("intricate, detailed")
+        elif complexity_val > 0.2:
             modifiers.append("detailed")
-        elif self.preference_weights["complexity"] < -0.3:
-            modifiers.append("minimalist")
+        elif complexity_val < -0.5:
+            modifiers.append("clean, minimalist")
+        elif complexity_val < -0.2:
+            modifiers.append("simple")
 
-        # 아트 스타일
-        modifiers.append(f"{self.preference_weights['art_style']} style")
+        # 아트 스타일 (다양화)
+        art_style = self.preference_weights.get("art_style", "realistic")
+        style_variations = {
+            "realistic": ["photorealistic", "lifelike", "naturalistic"],
+            "abstract": ["abstract", "conceptual", "non-representational"],
+            "impressionist": ["impressionistic", "painterly", "expressive"],
+            "minimalist": ["minimalist", "clean", "geometric"]
+        }
+        
+        if art_style in style_variations:
+            style_options = style_variations[art_style]
+            # 다양성을 위해 첫 번째 옵션 사용 (나중에 랜덤화 가능)
+            modifiers.append(f"{style_options[0]} style")
+        else:
+            modifiers.append(f"{art_style} style")
 
-        return ", ".join(modifiers)
+        # 구성 (composition) 반영
+        composition = self.preference_weights.get("composition", "balanced")
+        if composition == "complex":
+            modifiers.append("dynamic composition")
+        elif composition == "minimal":
+            modifiers.append("simple composition")
+        # balanced는 기본값이므로 추가하지 않음
+        
+        # 적응형 시스템의 예측 만족도 반영 (가능한 경우)
+        try:
+            if hasattr(self, 'adaptive_system') and self.emotion_history:
+                recent_emotion = self.emotion_history[-1]["emotion"]
+                recent_prompt = self.emotion_history[-1].get("generated_prompt", "")
+                
+                # 더미 이미지 메타데이터로 만족도 예측
+                dummy_metadata = {"brightness": 0.5, "saturation": 0.5, "contrast": 0.5}
+                predicted_satisfaction = self.adaptive_system.predict_satisfaction(
+                    self.user_id, recent_emotion, dummy_metadata, recent_prompt
+                )
+                
+                # 높은 만족도 예측시 품질 강조 수정자 추가
+                if predicted_satisfaction > 4.0:
+                    modifiers.append("high quality")
+                elif predicted_satisfaction > 3.5:
+                    modifiers.append("refined")
+        except Exception:
+            # 예측 실패시 무시
+            pass
+
+        return ", ".join(modifiers) if modifiers else "realistic style"
 
     def get_therapeutic_insights(self) -> Dict[str, Any]:
         """치료적 인사이트 제공"""

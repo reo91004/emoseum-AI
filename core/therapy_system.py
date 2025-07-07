@@ -65,7 +65,18 @@ class EmotionalImageTherapySystem:
         # 4. 보상 모델 및 트레이너 초기화
         if self.pipeline:
             self.reward_model = DRaFTPlusRewardModel(self.device)
-            self.trainer = DRaFTPlusTrainer(self.pipeline, self.reward_model)
+            
+            # 개선된 트레이너 선택 (LoRA 또는 DDPO)
+            try:
+                from training.improved_trainer import ImprovedDRaFTPlusTrainer
+                self.trainer = ImprovedDRaFTPlusTrainer(
+                    self.pipeline, self.reward_model, use_lora=True
+                )
+                logger.info("✅ 개선된 DDPO 트레이너 초기화 완료")
+            except Exception as e:
+                logger.warning(f"⚠️ 개선된 트레이너 로드 실패: {e}, 기본 트레이너 사용")
+                from training.trainer import DRaFTPlusTrainer
+                self.trainer = DRaFTPlusTrainer(self.pipeline, self.reward_model)
         else:
             self.reward_model = None
             self.trainer = None
