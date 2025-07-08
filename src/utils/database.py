@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 class DatabaseManager:
     """Database management utility class for Emoseum system"""
 
-    def __init__(self, db_path: str = "user_profiles.db"):
+    def __init__(self, db_path: str = "data/user_profiles.db"):
         """
         Initialize database manager.
 
@@ -417,7 +417,7 @@ class DatabaseManager:
 class LoRAManager:
     """LoRA adapter persistence manager"""
 
-    def __init__(self, lora_dir: str = "user_loras", device: str = "cpu"):
+    def __init__(self, lora_dir: str = "data/user_loras", device: str = "cpu"):
         """
         Initialize LoRA manager.
 
@@ -426,7 +426,7 @@ class LoRAManager:
             device: Device for tensor operations
         """
         self.lora_dir = Path(lora_dir)
-        self.lora_dir.mkdir(exist_ok=True)
+        self.lora_dir.mkdir(parents=True, exist_ok=True)
         self.device = device
 
     def save_user_lora(self, user_id: str, model_state_dict: Dict[str, torch.Tensor]):

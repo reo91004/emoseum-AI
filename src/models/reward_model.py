@@ -11,12 +11,12 @@ from typing import List
 from config import device, logger
 from models.emotion import EmotionEmbedding
 from models.user_profile import UserEmotionProfile
-from models.improved_evaluators import (
+from models.evaluators import (
     ImprovedAestheticEvaluator,
     ImprovedEmotionEvaluator,
     ImprovedPersonalizationEvaluator
 )
-from models.improved_diversity_evaluator import ImprovedDiversityEvaluator
+from models.diversity_evaluator import ImprovedDiversityEvaluator
 
 
 class DRaFTPlusRewardModel:

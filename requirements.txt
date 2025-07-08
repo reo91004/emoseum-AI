@@ -1,26 +1,26 @@
 # Core dependencies
-torch>=2.6.0
-torchvision>=0.20.0
-numpy>=1.21.0
-Pillow>=9.0.0
+torch>=2.0.0,<3.0.0
+torchvision>=0.15.0,<1.0.0
+numpy>=1.21.0,<2.0.0
+Pillow>=9.0.0,<11.0.0
 
 # Hugging Face ecosystem
-transformers>=4.30.0
-diffusers>=0.20.0
-accelerate>=0.20.0
+transformers>=4.30.0,<5.0.0
+diffusers>=0.20.0,<1.0.0
+accelerate>=0.20.0,<1.0.0
 
 # Image processing and computer vision
-opencv-python>=4.7.0
+opencv-python>=4.7.0,<5.0.0
 
 # Data handling
-datasets>=2.10.0
+datasets>=2.10.0,<3.0.0
 
 # LoRA and model optimization
-peft>=0.4.0
+peft>=0.4.0,<1.0.0
 
 # Logging and utilities
-tqdm>=4.64.0
-wandb>=0.15.0
+tqdm>=4.64.0,<5.0.0
+wandb>=0.15.0,<1.0.0
 
 # Optional: For better performance
-# xformers>=0.0.20  # Optional: for memory efficient attention (macOS build issue)
+# xformers>=0.0.20,<1.0.0  # Optional: for memory efficient attention (macOS build issue)

@@ -3,9 +3,8 @@
 Emoseum 설정 및 상수 정의
 """
 
+import os
 import torch
-import logging
-import sys
 
 # 디바이스 설정
 if torch.backends.mps.is_available():
@@ -19,16 +18,18 @@ else:
 
 device = torch.device(device_type)
 
-# 로깅 설정
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.FileHandler("emotion_therapy.log"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
-logger = logging.getLogger(__name__)
+# 환경변수에서 설정 읽기
+DEFAULT_DIFFUSION_MODEL = os.getenv("DIFFUSION_MODEL", "runwayml/stable-diffusion-v1-5")
+DEFAULT_STEPS = int(os.getenv("DIFFUSION_STEPS", "15"))
+DEFAULT_GUIDANCE_SCALE = float(os.getenv("GUIDANCE_SCALE", "7.5"))
+DEFAULT_WIDTH = int(os.getenv("IMAGE_WIDTH", "512"))
+DEFAULT_HEIGHT = int(os.getenv("IMAGE_HEIGHT", "512"))
+DEFAULT_SEED = None
+
+# 디렉토리 설정
+DATABASE_NAME = os.getenv("DATABASE_NAME", "data/user_profiles.db")
+GENERATED_IMAGES_DIR = os.getenv("GENERATED_IMAGES_DIR", "data/generated_images")
+USER_LORAS_DIR = os.getenv("USER_LORAS_DIR", "data/user_loras")
 
 # 라이브러리 가용성 확인
 try:
@@ -42,9 +43,7 @@ try:
         RobertaModel,
     )
     TRANSFORMERS_AVAILABLE = True
-    logger.info("✅ Transformers 라이브러리 로드 완료")
 except ImportError:
-    logger.error("❌ transformers 라이브러리가 필요합니다: pip install transformers")
     TRANSFORMERS_AVAILABLE = False
 
 try:
@@ -57,28 +56,11 @@ try:
         EulerDiscreteScheduler,
     )
     DIFFUSERS_AVAILABLE = True
-    logger.info("✅ Diffusers 라이브러리 로드 완료")
 except ImportError:
-    logger.error("❌ diffusers 라이브러리가 필요합니다: pip install diffusers")
     DIFFUSERS_AVAILABLE = False
 
 try:
     from peft import LoraConfig, get_peft_model, TaskType, PeftModel
     PEFT_AVAILABLE = True
-    logger.info("✅ PEFT 라이브러리 로드 완료")
 except ImportError:
-    logger.error("❌ peft 라이브러리가 필요합니다: pip install peft")
     PEFT_AVAILABLE = False
-
-# 기본 설정 값들
-DEFAULT_DIFFUSION_MODEL = "runwayml/stable-diffusion-v1-5"
-DEFAULT_STEPS = 15
-DEFAULT_GUIDANCE_SCALE = 7.5
-DEFAULT_WIDTH = 512
-DEFAULT_HEIGHT = 512
-DEFAULT_SEED = None
-
-# 데이터베이스 설정
-DATABASE_NAME = "user_profiles.db"
-GENERATED_IMAGES_DIR = "generated_images"
-USER_LORAS_DIR = "user_loras"

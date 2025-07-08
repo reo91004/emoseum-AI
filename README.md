@@ -69,11 +69,62 @@ pip install pillow numpy opencv-python
 git clone https://github.com/your-repo/Emoseum-image-gen.git
 cd Emoseum-image-gen
 
-# 필요한 디렉토리 생성
-mkdir -p generated_images user_loras
+# 의존성 설치
+pip install -r requirements.txt
 
 # 시스템 요구사항 확인
 python main.py --help
+```
+
+## 📁 프로젝트 구조
+
+```
+Emoseum-image-gen/
+├── src/                      # 메인 소스 코드
+│   ├── config/               # 시스템 설정
+│   │   ├── __init__.py
+│   │   ├── settings.py       # 기본 설정 및 환경변수
+│   │   └── logging_config.py # 로깅 설정
+│   ├── core/                 # 핵심 시스템
+│   │   ├── __init__.py
+│   │   └── therapy_system.py # 메인 치료 시스템
+│   ├── models/               # AI 모델들
+│   │   ├── __init__.py
+│   │   ├── emotion.py        # 감정 임베딩
+│   │   ├── emotion_mapper.py # 감정 분석 시스템
+│   │   ├── user_profile.py   # 사용자 프로파일
+│   │   ├── lora_manager.py   # LoRA 개인화 관리
+│   │   ├── reward_model.py   # 강화학습 보상 모델
+│   │   ├── evaluators.py     # 품질 평가기들
+│   │   ├── diversity_evaluator.py # 다양성 평가기
+│   │   ├── adaptive_personalization.py # 적응형 개인화
+│   │   └── smart_feedback_system.py # 스마트 피드백
+│   ├── training/             # 강화학습 모듈
+│   │   ├── __init__.py
+│   │   ├── trainer.py        # 기본 트레이너
+│   │   ├── ddpo_trainer.py   # DDPO 기반 트레이너
+│   │   └── lora_trainer.py   # LoRA 트레이너
+│   └── utils/                # 유틸리티
+│       ├── __init__.py
+│       └── database.py       # 데이터베이스 관리
+├── cli/                      # CLI 인터페이스
+│   ├── __init__.py
+│   ├── main.py              # 메인 CLI
+│   └── feedback_cli.py      # 피드백 CLI
+├── data/                     # 사용자 데이터 (Git 제외)
+│   ├── generated_images/     # 생성된 이미지들
+│   ├── user_loras/          # 사용자별 LoRA 어댑터
+│   └── user_profiles.db     # 사용자 프로파일 DB
+├── logs/                     # 로그 파일들
+│   └── therapy.log          # 시스템 로그
+├── tests/                    # 테스트 코드
+│   └── __init__.py
+├── main.py                   # 메인 실행 파일
+├── feedback.py              # 피드백 실행 파일
+├── requirements.txt          # 기본 의존성
+├── requirements-dev.txt      # 개발 의존성
+├── pyproject.toml           # 프로젝트 설정
+└── README.md                # 프로젝트 문서
 ```
 
 ## 💻 사용법
@@ -94,14 +145,14 @@ python main.py --user-id "carol" --text "우울한 기분" --steps 25 --guidance
 ### 사용자 피드백 및 개인화 학습
 
 ```bash
-# 긍정적 피드백 (1.0-5.0 척도)
+# 전용 피드백 도구 사용 (권장)
+python feedback.py --user-id "alice" --emotion-id 14
+
+# 또는 메인 CLI에서 피드백
 python main.py --user-id "alice" --emotion-id 1 --feedback-score 4.8 --comments "정말 마음에 든다"
 
 # 부정적 피드백을 통한 모델 개선
 python main.py --user-id "bob" --emotion-id 2 --feedback-score 2.3
-
-# 학습 없이 피드백만 저장
-python main.py --user-id "carol" --emotion-id 3 --feedback-score 3.5 --no-training
 ```
 
 ### 치료 진행도 및 인사이트
@@ -256,14 +307,14 @@ preference_weights = {
 
 ### 로그 확인
 
-상세한 로그는 `emotion_therapy.log` 파일에서 확인할 수 있습니다:
+상세한 로그는 `logs/therapy.log` 파일에서 확인할 수 있습니다:
 
 ```bash
 # 실시간 로그 확인
-tail -f emotion_therapy.log
+tail -f logs/therapy.log
 
 # 오류 로그만 확인
-grep "ERROR" emotion_therapy.log
+grep "ERROR" logs/therapy.log
 ```
 
 ---

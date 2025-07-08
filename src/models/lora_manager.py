@@ -23,16 +23,15 @@ class PersonalizedLoRAManager:
         self,
         base_model_path: str = "runwayml/stable-diffusion-v1-5",
         lora_rank: int = 16,
+        lora_dir: str = "data/user_loras",
     ):
         self.base_model_path = base_model_path
         self.lora_rank = lora_rank
         self.device = device
+        self.lora_dir = Path(lora_dir)
+        self.lora_dir.mkdir(parents=True, exist_ok=True)
         self.user_adapters = {}
         self.adapter_configs = {}
-
-        # LoRA 저장 경로
-        self.lora_dir = Path("user_loras")
-        self.lora_dir.mkdir(exist_ok=True)
 
         if not PEFT_AVAILABLE:
             logger.warning("⚠️ PEFT 라이브러리가 없어 LoRA 기능이 제한됩니다")

@@ -19,6 +19,9 @@ from config import (
     TRANSFORMERS_AVAILABLE,
     DIFFUSERS_AVAILABLE,
     PEFT_AVAILABLE,
+    GENERATED_IMAGES_DIR,
+    USER_LORAS_DIR,
+    DATABASE_NAME,
 )
 from models.emotion import EmotionEmbedding
 from models.emotion_mapper import AdvancedEmotionMapper
@@ -48,7 +51,7 @@ class EmotionalImageTherapySystem:
         self.device = device
 
         # 출력 디렉토리 생성
-        self.output_dir = Path("generated_images")
+        self.output_dir = Path(GENERATED_IMAGES_DIR)
         self.output_dir.mkdir(exist_ok=True)
 
         # 컴포넌트 초기화
@@ -58,7 +61,7 @@ class EmotionalImageTherapySystem:
         self.emotion_mapper = AdvancedEmotionMapper()
 
         # 2. LoRA 매니저 초기화
-        self.lora_manager = PersonalizedLoRAManager(model_path)
+        self.lora_manager = PersonalizedLoRAManager(model_path, lora_dir=USER_LORAS_DIR)
 
         # 3. SD 파이프라인 로드
         self.pipeline = self._load_pipeline()
@@ -69,7 +72,7 @@ class EmotionalImageTherapySystem:
             
             # 개선된 트레이너 선택 (LoRA 또는 DDPO)
             try:
-                from training.improved_trainer import ImprovedDRaFTPlusTrainer
+                from training.ddpo_trainer import ImprovedDRaFTPlusTrainer
                 self.trainer = ImprovedDRaFTPlusTrainer(
                     self.pipeline, self.reward_model, use_lora=True
                 )
@@ -136,7 +139,7 @@ class EmotionalImageTherapySystem:
     def get_user_profile(self, user_id: str) -> UserEmotionProfile:
         """사용자 프로파일 가져오기 또는 생성"""
         if user_id not in self.user_profiles:
-            self.user_profiles[user_id] = UserEmotionProfile(user_id)
+            self.user_profiles[user_id] = UserEmotionProfile(user_id, db_path=DATABASE_NAME)
             logger.info(f"✅ 새 사용자 프로파일 생성: {user_id}")
         return self.user_profiles[user_id]
 

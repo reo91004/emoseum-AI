@@ -165,17 +165,18 @@ cython_debug/
 *.db-journal
 user_profiles.db
 
-# Generated images (depending on project needs, you might want to keep these)
-generated_images/
-!generated_images/.gitkeep
-
-# User-specific model adapters
-user_adapters/
-!user_adapters/.gitkeep
+# Data directory (contains generated images, user data, etc.)
+data/
+!data/.gitkeep
 
 # Hugging Face cache
 .cache/
 huggingface_hub/
+transformers_cache/
+diffusers_cache/
+
+# Wandb
+wandb/
 
 # Model checkpoints and weights
 *.pth
