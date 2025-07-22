@@ -1,0 +1,61 @@
+# .gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# 프로젝트 데이터
+data/
+logs/
+*.log
+
+# 모델 체크포인트
+*.pt
+*.pth
+*.bin
+*.safetensors
+checkpoints/
+models/
+
+# 환경 설정
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 테스트
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 빌드
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# 임시 파일
+tmp/
+temp/
+*.tmp

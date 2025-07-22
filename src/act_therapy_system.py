@@ -5,12 +5,12 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 
-from user_manager import UserManager, PsychometricResult
-from prompt_architect import PromptArchitect
-from personalization_manager import PersonalizationManager
-from image_generator import ImageGenerator
-from gallery_manager import GalleryManager, GalleryItem
-from rule_manager import CopingStyleRules
+from .user_manager import UserManager, PsychometricResult
+from .prompt_architect import PromptArchitect
+from .personalization_manager import PersonalizationManager
+from .image_generator import ImageGenerator
+from .gallery_manager import GalleryManager, GalleryItem
+from .rule_manager import CopingStyleRules
 
 logger = logging.getLogger(__name__)
 
@@ -373,7 +373,7 @@ class ACTTherapySystem:
         ]
 
         # 3. LoRA 훈련 데이터 준비
-        from training.lora_trainer import PersonalizedLoRATrainer
+        from ..training.lora_trainer import PersonalizedLoRATrainer
 
         lora_trainer = PersonalizedLoRATrainer()
         lora_data = lora_trainer.prepare_training_data(
@@ -382,7 +382,7 @@ class ACTTherapySystem:
         lora_requirements = lora_trainer.get_training_requirements(len(lora_data))
 
         # 4. DRaFT+ 훈련 데이터 준비
-        from training.draft_trainer import DRaFTPlusTrainer
+        from ..training.draft_trainer import DRaFTPlusTrainer
 
         draft_trainer = DRaFTPlusTrainer()
         draft_data = draft_trainer.prepare_training_data(
@@ -460,7 +460,7 @@ class ACTTherapySystem:
         try:
             # LoRA 훈련
             if training_type in ["lora", "both"]:
-                from training.lora_trainer import PersonalizedLoRATrainer
+                from ..training.lora_trainer import PersonalizedLoRATrainer
 
                 lora_trainer = PersonalizedLoRATrainer()
 
@@ -472,7 +472,7 @@ class ACTTherapySystem:
 
             # DRaFT+ 훈련
             if training_type in ["draft", "both"]:
-                from training.draft_trainer import DRaFTPlusTrainer
+                from ..training.draft_trainer import DRaFTPlusTrainer
 
                 draft_trainer = DRaFTPlusTrainer()
 

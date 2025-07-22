@@ -109,10 +109,14 @@ class GalleryManager:
                 hope_image_path TEXT,
                 guided_question TEXT,
                 created_date TEXT,
-                coping_style TEXT,
-                INDEX(user_id, created_date)
+                coping_style TEXT
             )
         """
+        )
+
+        # 인덱스 생성
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_gallery_user_date ON gallery_items(user_id, created_date)"
         )
 
         # 미술관 방문 기록
