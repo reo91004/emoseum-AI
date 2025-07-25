@@ -116,28 +116,32 @@ class PersonalizedLoRATrainer:
     def prepare_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """방명록 데이터를 훈련 데이터로 변환"""
+        """갤러리 아이템을 LoRA 훈련 데이터로 변환"""
 
         training_data = []
 
         for item in gallery_items:
-            # 방명록 제목이 있고 희망 이미지가 있는 완성된 아이템만 사용
+            # 방명록 제목이 있고 큐레이터 메시지가 있는 완성된 아이템만 사용
             if (
                 item.get("guestbook_title")
-                and item.get("hope_image_path")
-                and Path(item["hope_image_path"]).exists()
+                and item.get("curator_message")
+                and item.get("reflection_image_path")
+                and Path(item["reflection_image_path"]).exists()
             ):
 
-                # 방명록 제목의 감정 극성 분석
-                title_sentiment = self._analyze_title_sentiment(item["guestbook_title"])
+                # 큐레이터 메시지에 대한 사용자 반응 분석
+                message_reactions = item.get("message_reactions", [])
+                reaction_score = self._calculate_reaction_score(message_reactions)
 
                 # 긍정적 반응(3.5점 이상)만 학습 데이터로 사용
-                if title_sentiment >= 3.5:
+                if reaction_score >= 3.5:
                     training_sample = {
-                        "prompt": item["hope_prompt"],
-                        "image_path": item["hope_image_path"],
-                        "sentiment_score": title_sentiment,
-                        "user_title": item["guestbook_title"],
+                        "prompt": item["reflection_prompt"],
+                        "image_path": item["reflection_image_path"],
+                        "reaction_score": reaction_score,
+                        "guestbook_title": item["guestbook_title"],
+                        "curator_message": item["curator_message"],
+                        "message_reactions": message_reactions,
                         "tags": item.get("guestbook_tags", []),
                         "emotion_keywords": item.get("emotion_keywords", []),
                         "vad_scores": item.get("vad_scores", [0, 0, 0]),
@@ -146,90 +150,40 @@ class PersonalizedLoRATrainer:
                     training_data.append(training_sample)
 
         logger.info(
-            f"훈련 데이터 준비 완료: {len(training_data)}개 샘플 (총 {len(gallery_items)}개 중)"
+            f"LoRA 훈련 데이터 준비 완료: {len(training_data)}개 샘플 (총 {len(gallery_items)}개 중)"
         )
         return training_data
 
-    def _analyze_title_sentiment(self, title: str) -> float:
-        """방명록 제목의 감정 극성 분석 (1-5 척도)"""
+    def _calculate_reaction_score(self, reactions: List[str]) -> float:
+        """사용자 반응 점수 계산 (1-5 척도)"""
+        if not reactions:
+            return 3.0  # 기본 중성 점수
 
-        positive_words = {
-            "light",
-            "bright",
-            "hope",
-            "peace",
-            "joy",
-            "calm",
-            "beautiful",
-            "warm",
-            "gentle",
-            "soft",
-            "serene",
-            "harmony",
-            "balance",
-            "comfort",
+        # 반응 유형별 점수
+        reaction_scores = {
+            "like": 4.0,
+            "save": 4.5,
+            "share": 5.0,
+            "dismiss": 2.0,
+            "skip": 2.5,
         }
 
-        negative_words = {
-            "dark",
-            "heavy",
-            "storm",
-            "sad",
-            "grey",
-            "empty",
-            "void",
-            "chaos",
-            "cold",
-            "harsh",
-            "bitter",
-            "struggle",
-            "burden",
-            "alone",
-            "broken",
-        }
+        scores = []
+        for reaction in reactions:
+            score = reaction_scores.get(reaction, 3.0)
+            scores.append(score)
 
-        neutral_words = {
-            "moment",
-            "day",
-            "time",
-            "feeling",
-            "thought",
-            "memory",
-            "scene",
-            "landscape",
-            "journey",
-            "path",
-            "space",
-            "reflection",
-            "contemplation",
-        }
+        # 가중 평균 (최근 반응에 더 높은 가중치)
+        if len(scores) == 1:
+            return scores[0]
 
-        title_lower = title.lower()
-        words = title_lower.split()
+        weights = [
+            1.0 + i * 0.2 for i in range(len(scores))
+        ]  # 최근 반응일수록 높은 가중치
+        weighted_sum = sum(score * weight for score, weight in zip(scores, weights))
+        weight_sum = sum(weights)
 
-        positive_count = sum(
-            1 for word in words if any(pos in word for pos in positive_words)
-        )
-        negative_count = sum(
-            1 for word in words if any(neg in word for neg in negative_words)
-        )
-        neutral_count = sum(
-            1 for word in words if any(neu in word for neu in neutral_words)
-        )
-
-        total_words = len(words)
-        if total_words == 0:
-            return 3.0  # 중성
-
-        # 감정 점수 계산 (1-5 척도)
-        positive_ratio = positive_count / total_words
-        negative_ratio = negative_count / total_words
-
-        base_score = 3.0  # 중성 기준점
-        sentiment_adjustment = (positive_ratio - negative_ratio) * 2.0
-
-        final_score = base_score + sentiment_adjustment
-        return max(1.0, min(5.0, final_score))
+        return weighted_sum / weight_sum
 
     def train_user_lora(
         self, user_id: str, training_data: List[Dict[str, Any]]
@@ -270,7 +224,8 @@ class PersonalizedLoRATrainer:
             training_metrics = {
                 "losses": [],
                 "learning_rates": [],
-                "sentiment_scores": [],
+                "reaction_scores": [],
+                "curator_engagement": [],
             }
 
             # 훈련 루프
@@ -305,20 +260,28 @@ class PersonalizedLoRATrainer:
                         training_metrics["learning_rates"].append(
                             scheduler.get_last_lr()[0]
                         )
-                        training_metrics["sentiment_scores"].append(
-                            sample["sentiment_score"]
+                        training_metrics["reaction_scores"].append(
+                            sample["reaction_score"]
                         )
+
+                        # 큐레이터 메시지 참여도 계산
+                        engagement = self._calculate_curator_engagement(sample)
+                        training_metrics["curator_engagement"].append(engagement)
 
                         total_steps += 1
 
                         if total_steps % self.training_config["save_steps"] == 0:
-                            logger.info(f"Step {total_steps}: Loss = {loss.item():.4f}")
+                            logger.info(
+                                f"Step {total_steps}: Loss = {loss.item():.4f}, "
+                                f"Reaction = {sample['reaction_score']:.2f}"
+                            )
 
                     epoch_loss += loss.item()
 
                 avg_epoch_loss = epoch_loss / len(training_data)
                 logger.info(
-                    f"Epoch {epoch + 1}/{self.training_config['num_epochs']}: Avg Loss = {avg_epoch_loss:.4f}"
+                    f"Epoch {epoch + 1}/{self.training_config['num_epochs']}: "
+                    f"Avg Loss = {avg_epoch_loss:.4f}"
                 )
 
             # LoRA 모델 저장
@@ -334,7 +297,10 @@ class PersonalizedLoRATrainer:
                 "final_loss": (
                     training_metrics["losses"][-1] if training_metrics["losses"] else 0
                 ),
-                "avg_sentiment_score": np.mean(training_metrics["sentiment_scores"]),
+                "avg_reaction_score": np.mean(training_metrics["reaction_scores"]),
+                "avg_curator_engagement": np.mean(
+                    training_metrics["curator_engagement"]
+                ),
                 "lora_config": self.lora_config.__dict__,
                 "training_config": self.training_config,
             }
@@ -350,7 +316,8 @@ class PersonalizedLoRATrainer:
                 "metadata": metadata,
                 "training_metrics": {
                     "final_loss": metadata["final_loss"],
-                    "avg_sentiment": metadata["avg_sentiment_score"],
+                    "avg_reaction_score": metadata["avg_reaction_score"],
+                    "avg_curator_engagement": metadata["avg_curator_engagement"],
                     "total_steps": total_steps,
                 },
             }
@@ -404,11 +371,44 @@ class PersonalizedLoRATrainer:
         # MSE 손실
         loss = nn.functional.mse_loss(noise_pred, noise, reduction="mean")
 
-        # 감정 점수 기반 가중치 (긍정적 반응에 더 높은 가중치)
-        sentiment_weight = sample["sentiment_score"] / 5.0  # 0-1 정규화
-        weighted_loss = loss * sentiment_weight
+        # 반응 점수 기반 가중치 (긍정적 반응에 더 높은 가중치)
+        reaction_weight = sample["reaction_score"] / 5.0  # 0-1 정규화
+        weighted_loss = loss * reaction_weight
 
         return weighted_loss
+
+    def _calculate_curator_engagement(self, sample: Dict[str, Any]) -> float:
+        """큐레이터 메시지 참여도 계산"""
+
+        curator_message = sample.get("curator_message", {})
+        message_reactions = sample.get("message_reactions", [])
+
+        # 기본 참여도 점수
+        base_engagement = 0.5
+
+        # 메시지 반응이 있으면 참여도 증가
+        if message_reactions:
+            positive_reactions = sum(
+                1
+                for reaction in message_reactions
+                if reaction in ["like", "save", "share"]
+            )
+            total_reactions = len(message_reactions)
+
+            if total_reactions > 0:
+                positive_ratio = positive_reactions / total_reactions
+                base_engagement += positive_ratio * 0.5
+
+        # 큐레이터 메시지 개인화 수준 고려
+        personalization_data = curator_message.get("personalization_data", {})
+        if personalization_data:
+            personalization_level = personalization_data.get(
+                "personalized_elements", {}
+            )
+            if personalization_level:
+                base_engagement += 0.2
+
+        return min(1.0, base_engagement)
 
     def _simulate_training(self, user_id: str, data_size: int) -> Dict[str, Any]:
         """LoRA 훈련 시뮬레이션 (라이브러리 부족시)"""
@@ -420,7 +420,8 @@ class PersonalizedLoRATrainer:
 
         # 훈련 시뮬레이션
         simulated_loss = random.uniform(0.1, 0.3)
-        simulated_sentiment = random.uniform(3.5, 4.5)
+        simulated_reaction_score = random.uniform(3.5, 4.8)
+        simulated_engagement = random.uniform(0.6, 0.9)
 
         time.sleep(2)  # 훈련 시간 시뮬레이션
 
@@ -434,7 +435,8 @@ class PersonalizedLoRATrainer:
             "training_data_size": data_size,
             "simulation": True,
             "simulated_final_loss": simulated_loss,
-            "simulated_avg_sentiment": simulated_sentiment,
+            "simulated_avg_reaction_score": simulated_reaction_score,
+            "simulated_avg_curator_engagement": simulated_engagement,
             "note": "실제 라이브러리가 없어 시뮬레이션으로 실행됨",
         }
 
@@ -450,7 +452,8 @@ class PersonalizedLoRATrainer:
             "metadata": metadata,
             "training_metrics": {
                 "final_loss": simulated_loss,
-                "avg_sentiment": simulated_sentiment,
+                "avg_reaction_score": simulated_reaction_score,
+                "avg_curator_engagement": simulated_engagement,
                 "total_steps": data_size * 10,  # 가상의 스텝 수
             },
         }
@@ -503,9 +506,9 @@ class PersonalizedLoRATrainer:
         """훈련 권장사항"""
 
         if data_size < 20:
-            return "더 많은 감정 일기 작성과 방명록 작성이 필요합니다."
+            return "더 많은 감정 일기 작성과 큐레이터 메시지 상호작용이 필요합니다."
         elif data_size < 50:
-            return f"훈련까지 {50 - data_size}개의 긍정적 피드백이 더 필요합니다."
+            return f"훈련까지 {50 - data_size}개의 긍정적 메시지 반응이 더 필요합니다."
         elif data_size < 100:
             return "훈련 가능하지만, 더 많은 데이터로 성능을 향상시킬 수 있습니다."
         else:

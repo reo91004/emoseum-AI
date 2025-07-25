@@ -11,6 +11,7 @@ from .personalization_manager import PersonalizationManager
 from .image_generator import ImageGenerator
 from .gallery_manager import GalleryManager, GalleryItem
 from .rule_manager import CopingStyleRules
+from .curator_message import CuratorMessageSystem
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ class ACTTherapySystem:
             images_dir=str(self.data_dir / "gallery_images"),
         )
         self.rule_manager = CopingStyleRules()
+        self.curator_message_system = CuratorMessageSystem(self.user_manager)
 
         logger.info("ACT 치료 시스템 초기화 완료")
 
@@ -231,19 +233,19 @@ class ACTTherapySystem:
                 "guided_question": guided_question,
             },
             "personalization_updates": personalization_updates,
-            "next_step": "hope_creation",
+            "next_step": "curator_message",
             "guided_question": guided_question,
         }
 
         logger.info(f"방명록 작성 완료: {guestbook_title}")
         return guestbook_result
 
-    def create_hope_image(
-        self, user_id: str, gallery_item_id: int, user_response: str = ""
+    def create_curator_message(
+        self, user_id: str, gallery_item_id: int
     ) -> Dict[str, Any]:
-        """ACT 4단계: Closure (희망 이미지 생성)"""
+        """ACT 4단계: Closure (큐레이터 메시지 생성)"""
 
-        logger.info(f"사용자 {user_id} 희망 이미지 생성: 아이템 {gallery_item_id}")
+        logger.info(f"사용자 {user_id} 큐레이터 메시지 생성: 아이템 {gallery_item_id}")
 
         # 1. 갤러리 아이템 조회
         gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
@@ -253,44 +255,27 @@ class ACTTherapySystem:
         # 2. 사용자 프로필 조회
         user = self.user_manager.get_user(user_id)
 
-        # 3. 희망 프롬프트 생성
-        hope_prompt = self.prompt_architect.create_hope_prompt(
-            original_prompt=gallery_item.reflection_prompt,
-            guestbook_title=gallery_item.guestbook_title,
-            guestbook_tags=gallery_item.guestbook_tags,
-            visual_preferences=user.visual_preferences.__dict__,
+        # 3. 개인화된 큐레이터 메시지 생성
+        curator_message = self.curator_message_system.create_personalized_message(
+            user=user,
+            gallery_item=gallery_item,
         )
 
-        # 4. 희망 이미지 생성
-        hope_generation = self.image_generator.generate_image(
-            prompt=hope_prompt,
-            width=512,
-            height=512,
-            num_inference_steps=25,  # 더 높은 품질
-            guidance_scale=8.0,
-        )
-
-        if not hope_generation["success"]:
-            raise RuntimeError(f"희망 이미지 생성 실패: {hope_generation['error']}")
-
-        # 5. 희망 이미지 저장
-        success = self.gallery_manager.add_hope_image(
-            gallery_item_id, hope_prompt, hope_generation["image"]
+        # 4. 큐레이터 메시지 저장
+        success = self.gallery_manager.add_curator_message(
+            gallery_item_id, curator_message
         )
 
         if not success:
-            raise RuntimeError("희망 이미지 저장에 실패했습니다.")
+            raise RuntimeError("큐레이터 메시지 저장에 실패했습니다.")
 
-        hope_result = {
+        curator_result = {
             "user_id": user_id,
             "gallery_item_id": gallery_item_id,
             "step": "closure_complete",
-            "hope_image": {
-                "prompt": hope_prompt,
-                "generation_metadata": hope_generation["metadata"],
-            },
+            "curator_message": curator_message,
             "journey_complete": True,
-            "completion_message": "감정의 여정이 완성되었습니다. 당신만의 희망의 이미지가 미술관에 추가되었습니다.",
+            "completion_message": "감정의 여정이 완성되었습니다. 큐레이터가 당신의 용기를 인정합니다.",
             "next_recommendations": [
                 "미술관에서 이전 작품들을 돌아보기",
                 "새로운 감정 일기 작성하기",
@@ -298,8 +283,58 @@ class ACTTherapySystem:
             ],
         }
 
-        logger.info(f"희망 이미지 생성 완료: 아이템 {gallery_item_id}")
-        return hope_result
+        logger.info(f"큐레이터 메시지 생성 완료: 아이템 {gallery_item_id}")
+        return curator_result
+
+    def record_message_reaction(
+        self,
+        user_id: str,
+        gallery_item_id: int,
+        reaction_type: str,
+        reaction_data: Dict[str, Any] = None,
+    ) -> Dict[str, Any]:
+        """큐레이터 메시지에 대한 사용자 반응 기록"""
+
+        logger.info(f"사용자 {user_id} 메시지 반응 기록: {reaction_type}")
+
+        # 1. 갤러리 아이템 조회
+        gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
+        if not gallery_item or gallery_item.user_id != user_id:
+            raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
+
+        # 2. 반응 데이터 저장
+        success = self.gallery_manager.record_message_reaction(
+            gallery_item_id, reaction_type, reaction_data or {}
+        )
+
+        if not success:
+            raise RuntimeError("메시지 반응 저장에 실패했습니다.")
+
+        # 3. Level 2 개인화 업데이트 (긍정적 반응시)
+        personalization_updates = {}
+        if reaction_type in ["like", "save", "share"]:
+            personalization_updates = (
+                self.personalization_manager.update_preferences_from_message_reaction(
+                    user_id=user_id,
+                    reaction_type=reaction_type,
+                    curator_message=gallery_item.curator_message,
+                    guestbook_data={
+                        "title": gallery_item.guestbook_title,
+                        "tags": gallery_item.guestbook_tags,
+                    },
+                )
+            )
+
+        reaction_result = {
+            "user_id": user_id,
+            "gallery_item_id": gallery_item_id,
+            "reaction_type": reaction_type,
+            "reaction_recorded": True,
+            "personalization_updates": personalization_updates,
+        }
+
+        logger.info(f"메시지 반응 기록 완료: {reaction_type}")
+        return reaction_result
 
     def get_user_gallery(
         self, user_id: str, limit: int = 20, date_from: Optional[str] = None
@@ -338,7 +373,10 @@ class ACTTherapySystem:
             self.personalization_manager.recommend_content_adjustments(user_id)
         )
 
-        # 5. 종합 인사이트
+        # 5. 큐레이터 메시지 반응 분석
+        message_analytics = self.gallery_manager.get_message_reaction_analytics(user_id)
+
+        # 6. 종합 인사이트
         insights = {
             "user_id": user_id,
             "assessment_date": datetime.now().isoformat(),
@@ -346,6 +384,7 @@ class ACTTherapySystem:
             "emotional_journey": gallery_analytics.get("emotion_trends", {}),
             "growth_insights": gallery_analytics.get("growth_insights", []),
             "personalization_status": personalization_insights,
+            "message_engagement": message_analytics,
             "recommendations": {
                 "content_adjustments": content_recommendations,
                 "next_actions": self._generate_next_action_recommendations(
@@ -365,11 +404,11 @@ class ACTTherapySystem:
         # 1. 갤러리 데이터 조회
         gallery_items = self.gallery_manager.get_user_gallery(user_id, limit=1000)
 
-        # 2. 완성된 여정 수 계산 (reflection + guestbook + hope)
+        # 2. 완성된 여정 수 계산 (reflection + guestbook + curator_message)
         complete_journeys = [
             item
             for item in gallery_items
-            if item.guestbook_title and item.hope_image_path
+            if item.guestbook_title and item.curator_message
         ]
 
         # 3. LoRA 훈련 데이터 준비
@@ -426,93 +465,21 @@ class ACTTherapySystem:
 
         return readiness
 
-    def trigger_advanced_training(
-        self, user_id: str, training_type: str = "both"
-    ) -> Dict[str, Any]:
-        """Level 3 고급 모델 훈련 실행"""
-
-        logger.info(f"사용자 {user_id} 고급 모델 훈련 시작: {training_type}")
-
-        # 준비 상태 확인
-        readiness = self.check_advanced_training_readiness(user_id)
-        if readiness["overall_readiness"] != "ready":
-            return {
-                "success": False,
-                "error": "training_not_ready",
-                "readiness": readiness,
-            }
-
-        results = {
-            "user_id": user_id,
-            "training_type": training_type,
-            "started_at": datetime.now().isoformat(),
-            "results": {},
-        }
-
-        # 갤러리 데이터 조회
-        gallery_items = self.gallery_manager.get_user_gallery(user_id, limit=1000)
-        complete_journeys = [
-            item.to_dict()
-            for item in gallery_items
-            if item.guestbook_title and item.hope_image_path
-        ]
-
-        try:
-            # LoRA 훈련
-            if training_type in ["lora", "both"]:
-                from ..training.lora_trainer import PersonalizedLoRATrainer
-
-                lora_trainer = PersonalizedLoRATrainer()
-
-                lora_data = lora_trainer.prepare_training_data(complete_journeys)
-                lora_result = lora_trainer.train_user_lora(user_id, lora_data)
-                results["results"]["lora"] = lora_result
-
-                lora_trainer.cleanup()
-
-            # DRaFT+ 훈련
-            if training_type in ["draft", "both"]:
-                from ..training.draft_trainer import DRaFTPlusTrainer
-
-                draft_trainer = DRaFTPlusTrainer()
-
-                draft_data = draft_trainer.prepare_training_data(complete_journeys)
-                draft_result = draft_trainer.train_user_draft(user_id, draft_data)
-                results["results"]["draft"] = draft_result
-
-                draft_trainer.cleanup()
-
-            results["success"] = True
-            results["completed_at"] = datetime.now().isoformat()
-
-            logger.info(f"사용자 {user_id} 고급 모델 훈련 완료")
-
-        except Exception as e:
-            logger.error(f"고급 모델 훈련 실패: {e}")
-            results["success"] = False
-            results["error"] = str(e)
-
-        return results
-
+    # [이전과 동일한 헬퍼 메서드들...]
     def _analyze_emotion_moment(self, diary_text: str) -> Dict[str, Any]:
         """감정 분석 (The Moment 단계)"""
-
-        # 간단한 감정 키워드 추출
         emotion_keywords = self._extract_emotion_keywords(diary_text)
-
-        # VAD 점수 추정
         vad_scores = self._estimate_vad_scores(emotion_keywords, diary_text)
 
         return {
             "diary_text": diary_text,
             "keywords": emotion_keywords,
             "vad_scores": vad_scores,
-            "analysis_confidence": 0.8,  # 실제로는 더 정교한 계산
+            "analysis_confidence": 0.8,
         }
 
     def _extract_emotion_keywords(self, text: str) -> List[str]:
         """간단한 감정 키워드 추출"""
-
         emotion_dict = {
             "기쁨": ["기쁨", "기쁘", "즐거", "행복", "좋", "웃", "신나"],
             "슬픔": ["슬프", "우울", "울", "눈물", "아프", "힘들"],
@@ -538,8 +505,6 @@ class ACTTherapySystem:
         self, keywords: List[str], text: str
     ) -> Tuple[float, float, float]:
         """VAD 점수 추정"""
-
-        # 간단한 매핑 (실제로는 더 정교한 모델 필요)
         vad_mapping = {
             "기쁨": (0.8, 0.6, 0.4),
             "슬픔": (-0.7, -0.3, -0.5),
@@ -554,7 +519,6 @@ class ACTTherapySystem:
         if not keywords:
             return (0.0, 0.0, 0.0)
 
-        # 평균 계산
         valences, arousals, dominances = zip(
             *[vad_mapping.get(k, (0, 0, 0)) for k in keywords]
         )
@@ -569,13 +533,10 @@ class ACTTherapySystem:
         self, user, emotion_analysis: Dict[str, Any], diary_text: str
     ) -> Dict[str, Any]:
         """Reflection 이미지 생성"""
-
-        # 대처 스타일 조회
         coping_style = "balanced"
         if user.psychometric_results:
             coping_style = user.psychometric_results[0].coping_style
 
-        # Reflection 프롬프트 생성
         reflection_prompt = self.prompt_architect.create_reflection_prompt(
             emotion_keywords=emotion_analysis["keywords"],
             vad_scores=emotion_analysis["vad_scores"],
@@ -583,7 +544,6 @@ class ACTTherapySystem:
             visual_preferences=user.visual_preferences.__dict__,
         )
 
-        # 이미지 생성
         generation_result = self.image_generator.generate_image(
             prompt=reflection_prompt,
             width=512,
@@ -606,7 +566,6 @@ class ACTTherapySystem:
         self, result: PsychometricResult
     ) -> Dict[str, str]:
         """심리검사 결과 해석"""
-
         interpretations = {
             "coping_style_description": {
                 "avoidant": "감정적 상황을 회피하거나 우회하는 경향이 있습니다.",
@@ -626,7 +585,6 @@ class ACTTherapySystem:
         self, result: PsychometricResult
     ) -> List[str]:
         """심리검사 기반 권장사항"""
-
         recommendations = []
 
         if result.coping_style == "avoidant":
@@ -662,7 +620,6 @@ class ACTTherapySystem:
         self, user_stats: Dict[str, Any], gallery_analytics: Dict[str, Any]
     ) -> List[str]:
         """다음 행동 권장사항"""
-
         recommendations = []
 
         total_items = gallery_analytics.get("total_items", 0)
@@ -679,7 +636,6 @@ class ACTTherapySystem:
                 ]
             )
 
-        # 주기적 검사 필요성
         needs_test = user_stats.get("needs_periodic_test", False)
         if needs_test:
             recommendations.append("2주가 지났습니다. 주기적 심리검사를 받아보세요.")
@@ -690,7 +646,6 @@ class ACTTherapySystem:
         self, user_stats: Dict[str, Any], gallery_analytics: Dict[str, Any]
     ) -> str:
         """치료적 요약"""
-
         total_items = gallery_analytics.get("total_items", 0)
         member_days = gallery_analytics.get("date_range", {}).get("span_days", 0)
 
@@ -713,7 +668,6 @@ class ACTTherapySystem:
         self, lora_req: Dict[str, Any], draft_req: Dict[str, Any]
     ) -> List[str]:
         """고급 훈련 권장사항"""
-
         recommendations = []
 
         if not lora_req["can_train"]:
@@ -733,7 +687,6 @@ class ACTTherapySystem:
 
     def cleanup(self):
         """시스템 리소스 정리"""
-
         if hasattr(self.image_generator, "cleanup"):
             self.image_generator.cleanup()
 

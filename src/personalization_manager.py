@@ -121,6 +121,24 @@ class PersonalizationManager:
             ],
         }
 
+        # 메시지 반응 타입별 가중치
+        self.reaction_weights = {
+            "like": 0.1,
+            "save": 0.2,
+            "share": 0.3,
+            "dismiss": -0.1,
+            "skip": -0.05,
+        }
+
+        # 큐레이터 메시지 요소별 키워드
+        self.message_element_keywords = {
+            "encouragement": ["용기", "대단", "감동", "아름답", "훌륭", "인상적"],
+            "growth_recognition": ["성장", "발전", "향상", "변화", "깊이", "이해"],
+            "future_guidance": ["행동", "실천", "계획", "도전", "에너지", "변화"],
+            "connection": ["함께", "응원", "지지", "연결", "기다리", "믿고"],
+            "personal_strength": ["지혜", "용기", "힘", "능력", "강점", "재능"],
+        }
+
     def update_preferences_from_guestbook(
         self,
         user_id: str,
@@ -156,6 +174,226 @@ class PersonalizationManager:
         else:
             logger.info("중성적 또는 부정적 반응으로 선호도 업데이트를 건너뜁니다.")
             return {}
+
+    def update_preferences_from_message_reaction(
+        self,
+        user_id: str,
+        reaction_type: str,
+        curator_message: Dict[str, Any],
+        guestbook_data: Dict[str, Any],
+        additional_context: Dict[str, Any] = None,
+    ) -> Dict[str, float]:
+        """큐레이터 메시지 반응 기반 선호도 업데이트"""
+
+        logger.info(f"사용자 {user_id}의 메시지 반응 기반 학습: {reaction_type}")
+
+        # 1. 반응 유형별 가중치 확인
+        reaction_weight = self.reaction_weights.get(reaction_type, 0.0)
+
+        if reaction_weight <= 0:
+            logger.info(
+                f"부정적 또는 중성적 반응으로 학습을 건너뜁니다: {reaction_type}"
+            )
+            return {}
+
+        # 2. 메시지 내용 분석
+        message_analysis = self._analyze_curator_message(curator_message)
+
+        # 3. 방명록 컨텍스트 분석
+        guestbook_analysis = self._analyze_guestbook_context(guestbook_data)
+
+        # 4. 선호도 업데이트 계산
+        weight_updates = self._calculate_message_based_updates(
+            message_analysis, guestbook_analysis, reaction_weight
+        )
+
+        # 5. 사용자 선호도 업데이트
+        if weight_updates:
+            self.user_manager.update_preference_weights(user_id, weight_updates)
+            logger.info(f"메시지 반응 기반 선호도 업데이트 완료: {weight_updates}")
+
+        return weight_updates
+
+    def _analyze_curator_message(
+        self, curator_message: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """큐레이터 메시지 내용 분석"""
+
+        content = curator_message.get("content", {})
+        if not content:
+            return {}
+
+        analysis = {
+            "message_elements": [],
+            "tone_indicators": [],
+            "personalization_level": 0,
+        }
+
+        # 메시지 각 부분 분석
+        for section_name, section_content in content.items():
+            if isinstance(section_content, str) and section_content:
+                # 메시지 요소 식별
+                identified_elements = self._identify_message_elements(section_content)
+                analysis["message_elements"].extend(identified_elements)
+
+                # 톤 지표 분석
+                tone = self._analyze_message_tone(section_content)
+                if tone:
+                    analysis["tone_indicators"].append(tone)
+
+        # 개인화 수준 계산
+        personalization_data = curator_message.get("personalization_data", {})
+        analysis["personalization_level"] = self._calculate_personalization_level(
+            personalization_data
+        )
+
+        return analysis
+
+    def _identify_message_elements(self, text: str) -> List[str]:
+        """메시지에서 요소 식별"""
+        elements = []
+        text_lower = text.lower()
+
+        for element_type, keywords in self.message_element_keywords.items():
+            if any(keyword in text_lower for keyword in keywords):
+                elements.append(element_type)
+
+        return elements
+
+    def _analyze_message_tone(self, text: str) -> str:
+        """메시지 톤 분석"""
+        text_lower = text.lower()
+
+        if any(word in text_lower for word in ["부드럽", "따뜻", "온화", "섬세"]):
+            return "gentle"
+        elif any(word in text_lower for word in ["강한", "확고", "명확", "직접"]):
+            return "direct"
+        elif any(word in text_lower for word in ["균형", "조화", "안정", "성숙"]):
+            return "balanced"
+        else:
+            return "neutral"
+
+    def _calculate_personalization_level(
+        self, personalization_data: Dict[str, Any]
+    ) -> float:
+        """개인화 수준 계산"""
+        if not personalization_data:
+            return 0.0
+
+        factors = []
+
+        # 대처 스타일 고려 여부
+        if "coping_style" in personalization_data:
+            factors.append(0.3)
+
+        # 개인화 요소 포함 여부
+        personalized_elements = personalization_data.get("personalized_elements", {})
+        if personalized_elements:
+            factors.append(0.4)
+
+        # 성장 단계 고려 여부
+        if "growth_stage" in personalization_data:
+            factors.append(0.3)
+
+        return sum(factors)
+
+    def _analyze_guestbook_context(
+        self, guestbook_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """방명록 컨텍스트 분석"""
+
+        title = guestbook_data.get("title", "")
+        tags = guestbook_data.get("tags", [])
+
+        return {
+            "title_sentiment": self._analyze_sentiment(title),
+            "tags_sentiment": self._analyze_tags_sentiment(tags),
+            "title_characteristics": self._analyze_title_characteristics(title),
+            "tag_themes": self._analyze_tag_themes(tags),
+        }
+
+    def _analyze_title_characteristics(self, title: str) -> Dict[str, bool]:
+        """제목 특성 분석"""
+        title_lower = title.lower()
+
+        return {
+            "has_metaphor": any(
+                word in title_lower
+                for word in ["같은", "처럼", "마치", "듯한", "속의", "안의"]
+            ),
+            "has_color": any(
+                word in title_lower
+                for word in ["빨간", "파란", "노란", "검은", "하얀", "회색"]
+            ),
+            "has_nature": any(
+                word in title_lower
+                for word in ["바다", "하늘", "나무", "꽃", "바람", "비", "해", "달"]
+            ),
+            "has_emotion": any(
+                word in title_lower
+                for word in ["기쁨", "슬픔", "화남", "평온", "불안", "외로움"]
+            ),
+        }
+
+    def _analyze_tag_themes(self, tags: List[str]) -> List[str]:
+        """태그 테마 분석"""
+        themes = []
+
+        combined_tags = " ".join(tags).lower()
+
+        theme_keywords = {
+            "nature": ["자연", "바다", "하늘", "숲", "꽃", "나무"],
+            "emotion": ["감정", "마음", "기분", "느낌", "생각"],
+            "time": ["시간", "순간", "하루", "오늘", "내일", "과거"],
+            "space": ["공간", "장소", "집", "길", "여행", "방"],
+            "relationship": ["사람", "친구", "가족", "연인", "관계"],
+            "abstract": ["꿈", "희망", "의미", "가치", "철학", "생각"],
+        }
+
+        for theme, keywords in theme_keywords.items():
+            if any(keyword in combined_tags for keyword in keywords):
+                themes.append(theme)
+
+        return themes
+
+    def _calculate_message_based_updates(
+        self,
+        message_analysis: Dict[str, Any],
+        guestbook_analysis: Dict[str, Any],
+        reaction_weight: float,
+    ) -> Dict[str, float]:
+        """메시지 반응 기반 선호도 업데이트 계산"""
+
+        updates = {}
+
+        # 1. 메시지 요소별 선호도 업데이트
+        message_elements = message_analysis.get("message_elements", [])
+        for element in message_elements:
+            # 각 메시지 요소에 대한 선호도 강화
+            updates[f"message_{element}_preference"] = reaction_weight * 0.1
+
+        # 2. 톤 선호도 업데이트
+        tone_indicators = message_analysis.get("tone_indicators", [])
+        for tone in tone_indicators:
+            updates[f"tone_{tone}_preference"] = reaction_weight * 0.15
+
+        # 3. 개인화 수준 기반 업데이트
+        personalization_level = message_analysis.get("personalization_level", 0)
+        if personalization_level > 0.5:
+            updates["high_personalization_preference"] = reaction_weight * 0.2
+
+        # 4. 방명록 컨텍스트 기반 업데이트
+        title_characteristics = guestbook_analysis.get("title_characteristics", {})
+        for characteristic, present in title_characteristics.items():
+            if present:
+                updates[f"title_{characteristic}_preference"] = reaction_weight * 0.05
+
+        # 5. 태그 테마 기반 업데이트
+        tag_themes = guestbook_analysis.get("tag_themes", [])
+        for theme in tag_themes:
+            updates[f"theme_{theme}_preference"] = reaction_weight * 0.08
+
+        return updates
 
     def _analyze_sentiment(self, text: str) -> float:
         """텍스트 감정 극성 분석"""
@@ -329,13 +567,14 @@ class PersonalizationManager:
                 "brightness": prefs.brightness,
                 "saturation": prefs.saturation,
             },
-            "personalization_level": self._calculate_personalization_level(prefs),
+            "personalization_level": self._calculate_personalization_level_user(prefs),
+            "message_preferences": self._get_message_preferences(user_id),
         }
 
         return insights
 
-    def _calculate_personalization_level(self, preferences) -> str:
-        """개인화 수준 계산"""
+    def _calculate_personalization_level_user(self, preferences) -> str:
+        """사용자 개인화 수준 계산"""
         # 스타일 가중치의 분산을 통해 개인화 수준 측정
         weights = list(preferences.style_weights.values())
         variance = sum((w - (1 / len(weights))) ** 2 for w in weights) / len(weights)
@@ -346,6 +585,16 @@ class PersonalizationManager:
             return "medium"
         else:
             return "low"  # 고른 선호도
+
+    def _get_message_preferences(self, user_id: str) -> Dict[str, Any]:
+        """메시지 선호도 분석"""
+        # 실제 구현에서는 사용자의 메시지 반응 히스토리를 분석
+        # 여기서는 간단한 더미 데이터 반환
+        return {
+            "preferred_tone": "gentle",
+            "preferred_elements": ["encouragement", "growth_recognition"],
+            "personalization_preference": "high",
+        }
 
     def simulate_preference_learning(
         self, user_id: str, simulation_data: List[Dict[str, Any]]
@@ -360,13 +609,23 @@ class PersonalizationManager:
 
         for i, data in enumerate(simulation_data):
             # 각 스텝별 학습 수행
-            weight_updates = self.update_preferences_from_guestbook(
-                user_id=user_id,
-                guestbook_title=data.get("title", ""),
-                guestbook_tags=data.get("tags", []),
-                image_prompt=data.get("prompt", ""),
-                image_metadata=data.get("metadata", {}),
-            )
+            if data.get("type") == "guestbook":
+                weight_updates = self.update_preferences_from_guestbook(
+                    user_id=user_id,
+                    guestbook_title=data.get("title", ""),
+                    guestbook_tags=data.get("tags", []),
+                    image_prompt=data.get("prompt", ""),
+                    image_metadata=data.get("metadata", {}),
+                )
+            elif data.get("type") == "message_reaction":
+                weight_updates = self.update_preferences_from_message_reaction(
+                    user_id=user_id,
+                    reaction_type=data.get("reaction_type", "like"),
+                    curator_message=data.get("curator_message", {}),
+                    guestbook_data=data.get("guestbook_data", {}),
+                )
+            else:
+                weight_updates = {}
 
             step_result = {
                 "step": i + 1,
@@ -409,12 +668,10 @@ class PersonalizationManager:
         # 대처 스타일 기반 권장사항
         if coping_style == "avoidant":
             recommendations["prompt_style"] = "더 부드럽고 은유적인 표현 사용"
-            recommendations["image_guidance"] = (
-                "직접적이지 않은, 간접적인 감정 표현 권장"
-            )
+            recommendations["message_guidance"] = "간접적이고 보호적인 큐레이터 메시지"
         elif coping_style == "confrontational":
             recommendations["prompt_style"] = "더 직설적이고 명확한 감정 표현"
-            recommendations["image_guidance"] = "감정을 선명하게 드러내는 시각화"
+            recommendations["message_guidance"] = "직접적이고 용기를 강조하는 메시지"
 
         # 개인화 수준 기반 권장사항
         personalization_level = insights.get("personalization_level", "low")
@@ -422,5 +679,10 @@ class PersonalizationManager:
             recommendations["learning_focus"] = "더 구체적인 선호도 수집 필요"
         elif personalization_level == "high":
             recommendations["learning_focus"] = "Level 3 고급 학습 모델 적용 고려"
+
+        # 메시지 선호도 기반 권장사항
+        message_prefs = insights.get("message_preferences", {})
+        preferred_tone = message_prefs.get("preferred_tone", "neutral")
+        recommendations["curator_tone"] = f"{preferred_tone} 톤의 메시지 우선 사용"
 
         return recommendations

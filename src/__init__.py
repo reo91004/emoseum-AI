@@ -7,6 +7,7 @@ from .image_generator import ImageGenerator
 from .gallery_manager import GalleryManager
 from .personalization_manager import PersonalizationManager
 from .rule_manager import CopingStyleRules
+from .curator_message import CuratorMessageSystem
 
 __version__ = "1.0.0"
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     "GalleryManager",
     "PersonalizationManager",
     "CopingStyleRules",
+    "CuratorMessageSystem",
 ]

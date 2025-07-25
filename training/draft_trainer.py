@@ -41,31 +41,37 @@ class DRaFTRewardModel:
 
         # 보상 계산 가중치
         self.reward_weights = {
-            "sentiment_score": 0.6,  # 방명록 감정 점수
-            "visual_quality": 0.2,  # 시각적 품질
-            "user_preference": 0.2,  # 사용자 선호도 일치
+            "message_reaction_score": 0.5,  # 큐레이터 메시지 반응 점수
+            "guestbook_sentiment": 0.3,  # 방명록 감정 점수
+            "visual_quality": 0.1,  # 시각적 품질
+            "user_preference": 0.1,  # 사용자 선호도 일치
         }
 
     def calculate_reward(
         self,
         image_features: torch.Tensor,
-        sentiment_score: float,
+        message_reaction_score: float,
+        guestbook_sentiment: float,
         user_preferences: Dict[str, float],
     ) -> torch.Tensor:
         """종합 보상 계산"""
 
-        # 1. 감정 점수 기반 보상 (1-5 -> 0-1)
-        sentiment_reward = (sentiment_score - 1) / 4
+        # 1. 메시지 반응 기반 보상 (1-5 -> 0-1)
+        message_reward = (message_reaction_score - 1) / 4
 
-        # 2. 시각적 품질 보상 (신경망으로 추정)
+        # 2. 방명록 감정 점수 기반 보상 (1-5 -> 0-1)
+        sentiment_reward = (guestbook_sentiment - 1) / 4
+
+        # 3. 시각적 품질 보상 (신경망으로 추정)
         visual_reward = self.reward_net(image_features).squeeze()
 
-        # 3. 사용자 선호도 일치 보상 (간단한 휴리스틱)
+        # 4. 사용자 선호도 일치 보상 (간단한 휴리스틱)
         preference_reward = self._calculate_preference_reward(user_preferences)
 
         # 가중 평균
         total_reward = (
-            self.reward_weights["sentiment_score"] * sentiment_reward
+            self.reward_weights["message_reaction_score"] * message_reward
+            + self.reward_weights["guestbook_sentiment"] * sentiment_reward
             + self.reward_weights["visual_quality"] * visual_reward
             + self.reward_weights["user_preference"] * preference_reward
         )
@@ -154,26 +160,36 @@ class DRaFTPlusTrainer:
     def prepare_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """방명록 데이터를 DRaFT+ 훈련 데이터로 변환"""
+        """갤러리 아이템을 DRaFT+ 훈련 데이터로 변환"""
 
         training_data = []
 
         for item in gallery_items:
-            # 완성된 아이템만 사용 (reflection + hope 모두 있음)
+            # 완성된 아이템만 사용 (reflection + guestbook + curator_message)
             if (
                 item.get("guestbook_title")
                 and item.get("reflection_image_path")
-                and item.get("hope_image_path")
+                and item.get("curator_message")
             ):
 
                 # 방명록 감정 점수 분석
-                sentiment_score = self._analyze_sentiment_score(item["guestbook_title"])
+                guestbook_sentiment = self._analyze_guestbook_sentiment(
+                    item["guestbook_title"], item.get("guestbook_tags", [])
+                )
 
-                # 모든 데이터를 사용하되, 감정 점수를 보상으로 활용
+                # 큐레이터 메시지 반응 점수 계산
+                message_reactions = item.get("message_reactions", [])
+                reaction_score = self._calculate_message_reaction_score(
+                    message_reactions
+                )
+
+                # 모든 데이터를 사용하되, 반응 점수를 보상으로 활용
                 training_sample = {
                     "reflection_prompt": item["reflection_prompt"],
-                    "hope_prompt": item["hope_prompt"],
-                    "sentiment_score": sentiment_score,
+                    "curator_message": item["curator_message"],
+                    "guestbook_sentiment": guestbook_sentiment,
+                    "message_reaction_score": reaction_score,
+                    "message_reactions": message_reactions,
                     "guestbook_title": item["guestbook_title"],
                     "guestbook_tags": item.get("guestbook_tags", []),
                     "emotion_keywords": item.get("emotion_keywords", []),
@@ -187,8 +203,9 @@ class DRaFTPlusTrainer:
         logger.info(f"DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플")
         return training_data
 
-    def _analyze_sentiment_score(self, title: str) -> float:
-        """방명록 제목의 감정 점수 분석"""
+    def _analyze_guestbook_sentiment(self, title: str, tags: List[str]) -> float:
+        """방명록 제목과 태그의 감정 점수 분석"""
+
         positive_words = {
             "light",
             "bright",
@@ -224,24 +241,61 @@ class DRaFTPlusTrainer:
             "broken",
         }
 
-        title_lower = title.lower()
-        words = title_lower.split()
+        # 제목 분석
+        title_lower = title.lower() if title else ""
+        title_words = title_lower.split()
 
-        if not words:
+        # 태그 분석
+        tags_text = " ".join(tags).lower() if tags else ""
+        tag_words = tags_text.split()
+
+        all_words = title_words + tag_words
+
+        if not all_words:
             return 3.0
 
         positive_count = sum(
-            1 for word in words if any(pos in word for pos in positive_words)
+            1 for word in all_words if any(pos in word for pos in positive_words)
         )
         negative_count = sum(
-            1 for word in words if any(neg in word for neg in negative_words)
+            1 for word in all_words if any(neg in word for neg in negative_words)
         )
 
         # 1-5 척도 계산
         base_score = 3.0
-        sentiment_adjustment = (positive_count - negative_count) / len(words) * 2.0
+        sentiment_adjustment = (positive_count - negative_count) / len(all_words) * 2.0
 
         return max(1.0, min(5.0, base_score + sentiment_adjustment))
+
+    def _calculate_message_reaction_score(self, reactions: List[str]) -> float:
+        """큐레이터 메시지 반응 점수 계산"""
+
+        if not reactions:
+            return 3.0  # 기본 중성 점수
+
+        # 반응 유형별 점수
+        reaction_scores = {
+            "like": 4.2,
+            "save": 4.5,
+            "share": 5.0,
+            "dismiss": 2.0,
+            "skip": 2.5,
+        }
+
+        scores = []
+        for reaction in reactions:
+            score = reaction_scores.get(reaction, 3.0)
+            scores.append(score)
+
+        # 최근 반응에 더 높은 가중치를 주는 가중 평균
+        if len(scores) == 1:
+            return scores[0]
+
+        weights = [1.0 + i * 0.3 for i in range(len(scores))]
+        weighted_sum = sum(score * weight for score, weight in zip(scores, weights))
+        weight_sum = sum(weights)
+
+        return weighted_sum / weight_sum
 
     def train_user_draft(
         self, user_id: str, training_data: List[Dict[str, Any]]
@@ -284,7 +338,8 @@ class DRaFTPlusTrainer:
             training_metrics = {
                 "policy_losses": [],
                 "rewards": [],
-                "sentiment_scores": [],
+                "guestbook_sentiments": [],
+                "message_reaction_scores": [],
                 "kl_divergences": [],
             }
 
@@ -321,8 +376,11 @@ class DRaFTPlusTrainer:
                         # 메트릭 기록
                         training_metrics["policy_losses"].append(loss.item())
                         training_metrics["rewards"].append(reward)
-                        training_metrics["sentiment_scores"].append(
-                            sample["sentiment_score"]
+                        training_metrics["guestbook_sentiments"].append(
+                            sample["guestbook_sentiment"]
+                        )
+                        training_metrics["message_reaction_scores"].append(
+                            sample["message_reaction_score"]
                         )
 
                         total_steps += 1
@@ -330,7 +388,8 @@ class DRaFTPlusTrainer:
                         if total_steps % self.training_config["save_steps"] == 0:
                             logger.info(
                                 f"Step {total_steps}: Loss = {loss.item():.4f}, "
-                                f"Reward = {reward:.4f}"
+                                f"Reward = {reward:.4f}, "
+                                f"Message Score = {sample['message_reaction_score']:.2f}"
                             )
 
                     epoch_loss += loss.item()
@@ -365,9 +424,14 @@ class DRaFTPlusTrainer:
                     if training_metrics["rewards"]
                     else 0
                 ),
-                "avg_sentiment": (
-                    np.mean(training_metrics["sentiment_scores"])
-                    if training_metrics["sentiment_scores"]
+                "avg_guestbook_sentiment": (
+                    np.mean(training_metrics["guestbook_sentiments"])
+                    if training_metrics["guestbook_sentiments"]
+                    else 0
+                ),
+                "avg_message_reaction_score": (
+                    np.mean(training_metrics["message_reaction_scores"])
+                    if training_metrics["message_reaction_scores"]
                     else 0
                 ),
                 "training_config": self.training_config,
@@ -385,7 +449,10 @@ class DRaFTPlusTrainer:
                 "training_metrics": {
                     "final_loss": metadata["final_loss"],
                     "avg_reward": metadata["avg_reward"],
-                    "avg_sentiment": metadata["avg_sentiment"],
+                    "avg_guestbook_sentiment": metadata["avg_guestbook_sentiment"],
+                    "avg_message_reaction_score": metadata[
+                        "avg_message_reaction_score"
+                    ],
                     "total_steps": total_steps,
                 },
             }
@@ -402,8 +469,8 @@ class DRaFTPlusTrainer:
     ) -> Tuple[torch.Tensor, float]:
         """DRaFT+ 훈련 스텝"""
 
-        # 희망 프롬프트 사용 (더 긍정적인 결과를 목표)
-        prompt = sample["hope_prompt"]
+        # Reflection 프롬프트 사용 (큐레이터 메시지 맥락 포함)
+        prompt = sample["reflection_prompt"]
 
         # 프롬프트 인코딩
         text_inputs = self.pipeline.tokenizer(
@@ -460,7 +527,10 @@ class DRaFTPlusTrainer:
             user_preferences = {"overall": 0.5}
 
             reward = self.reward_model.calculate_reward(
-                image_features, sample["sentiment_score"], user_preferences
+                image_features=image_features,
+                message_reaction_score=sample["message_reaction_score"],
+                guestbook_sentiment=sample["guestbook_sentiment"],
+                user_preferences=user_preferences,
             ).item()
 
         # DRaFT+ 정책 손실: -log π(a|s) * (R - baseline)
@@ -484,7 +554,8 @@ class DRaFTPlusTrainer:
         # 시뮬레이션된 결과
         simulated_loss = random.uniform(0.05, 0.2)
         simulated_reward = random.uniform(0.6, 0.8)
-        simulated_sentiment = random.uniform(3.5, 4.2)
+        simulated_guestbook_sentiment = random.uniform(3.2, 4.5)
+        simulated_message_score = random.uniform(3.5, 4.8)
 
         # 시뮬레이션 정보 저장
         save_path = self.save_dir / f"{user_id}_draft_simulated"
@@ -497,7 +568,8 @@ class DRaFTPlusTrainer:
             "simulation": True,
             "simulated_final_loss": simulated_loss,
             "simulated_avg_reward": simulated_reward,
-            "simulated_avg_sentiment": simulated_sentiment,
+            "simulated_avg_guestbook_sentiment": simulated_guestbook_sentiment,
+            "simulated_avg_message_reaction_score": simulated_message_score,
             "note": "실제 라이브러리가 없어 시뮬레이션으로 실행됨",
         }
 
@@ -514,7 +586,8 @@ class DRaFTPlusTrainer:
             "training_metrics": {
                 "final_loss": simulated_loss,
                 "avg_reward": simulated_reward,
-                "avg_sentiment": simulated_sentiment,
+                "avg_guestbook_sentiment": simulated_guestbook_sentiment,
+                "avg_message_reaction_score": simulated_message_score,
                 "total_steps": data_size * 5,
             },
         }
@@ -538,7 +611,7 @@ class DRaFTPlusTrainer:
         """DRaFT+ 훈련 권장사항"""
 
         if data_size < 10:
-            return "더 많은 감정 일기 작성과 희망 이미지 생성이 필요합니다."
+            return "더 많은 감정 일기 작성과 큐레이터 메시지 상호작용이 필요합니다."
         elif data_size < 30:
             return f"DRaFT+ 훈련까지 {30 - data_size}개의 완성된 여정이 더 필요합니다."
         elif data_size < 50:

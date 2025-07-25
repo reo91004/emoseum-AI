@@ -26,8 +26,8 @@ class GalleryItem:
         reflection_image_path: str,
         guestbook_title: str = "",
         guestbook_tags: List[str] = None,
-        hope_prompt: str = "",
-        hope_image_path: str = "",
+        curator_message: Dict[str, Any] = None,
+        message_reactions: List[str] = None,
         guided_question: str = "",
         created_date: str = "",
         coping_style: str = "balanced",
@@ -42,8 +42,8 @@ class GalleryItem:
         self.reflection_image_path = reflection_image_path
         self.guestbook_title = guestbook_title
         self.guestbook_tags = guestbook_tags or []
-        self.hope_prompt = hope_prompt
-        self.hope_image_path = hope_image_path
+        self.curator_message = curator_message or {}
+        self.message_reactions = message_reactions or []
         self.guided_question = guided_question
         self.created_date = created_date or datetime.now().isoformat()
         self.coping_style = coping_style
@@ -60,12 +60,42 @@ class GalleryItem:
             "reflection_image_path": self.reflection_image_path,
             "guestbook_title": self.guestbook_title,
             "guestbook_tags": self.guestbook_tags,
-            "hope_prompt": self.hope_prompt,
-            "hope_image_path": self.hope_image_path,
+            "curator_message": self.curator_message,
+            "message_reactions": self.message_reactions,
             "guided_question": self.guided_question,
             "created_date": self.created_date,
             "coping_style": self.coping_style,
         }
+
+    def get_completion_status(self) -> Dict[str, bool]:
+        """각 단계별 완료 상태 반환"""
+        return {
+            "reflection": bool(self.reflection_image_path),
+            "guestbook": bool(self.guestbook_title),
+            "curator_message": bool(
+                self.curator_message
+                and isinstance(self.curator_message, dict)
+                and self.curator_message
+            ),
+            "completed": bool(
+                self.curator_message
+                and isinstance(self.curator_message, dict)
+                and self.curator_message
+            ),
+        }
+
+    def get_next_step(self) -> str:
+        """다음 해야 할 단계 반환"""
+        status = self.get_completion_status()
+
+        if not status["reflection"]:
+            return "reflection"
+        elif not status["guestbook"]:
+            return "guestbook"
+        elif not status["curator_message"]:
+            return "curator_message"
+        else:
+            return "completed"
 
 
 class GalleryManager:
@@ -83,14 +113,26 @@ class GalleryManager:
 
         # 이미지 저장 서브디렉토리
         (self.images_dir / "reflection").mkdir(exist_ok=True)
-        (self.images_dir / "hope").mkdir(exist_ok=True)
 
         self._init_database()
 
     def _init_database(self):
-        """데이터베이스 초기화"""
+        """데이터베이스 초기화 및 마이그레이션"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
+
+        # 1. 기본 테이블 생성
+        self._create_base_tables(cursor)
+
+        # 2. 마이그레이션 실행
+        self._run_migrations(cursor)
+
+        conn.commit()
+        conn.close()
+        logger.info("미술관 데이터베이스가 초기화되었습니다.")
+
+    def _create_base_tables(self, cursor):
+        """기본 테이블 생성"""
 
         # 미술관 아이템 테이블
         cursor.execute(
@@ -105,8 +147,8 @@ class GalleryManager:
                 reflection_image_path TEXT,
                 guestbook_title TEXT,
                 guestbook_tags TEXT,    -- JSON 배열
-                hope_prompt TEXT,
-                hope_image_path TEXT,
+                curator_message TEXT,   -- JSON 큐레이터 메시지
+                message_reactions TEXT, -- JSON 메시지 반응들
                 guided_question TEXT,
                 created_date TEXT,
                 coping_style TEXT
@@ -126,7 +168,7 @@ class GalleryManager:
                 visit_id INTEGER PRIMARY KEY AUTOINCREMENT,
                 user_id TEXT NOT NULL,
                 item_id INTEGER,
-                visit_type TEXT,  -- view_reflection, view_hope, revisit
+                visit_type TEXT,  -- view_reflection, view_message, revisit
                 visit_date TEXT,
                 viewing_duration REAL,  -- 초 단위
                 FOREIGN KEY (item_id) REFERENCES gallery_items (item_id)
@@ -134,7 +176,22 @@ class GalleryManager:
         """
         )
 
-        # 사용자 미술관 통계
+        # 메시지 반응 기록 테이블
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS message_reactions (
+                reaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id TEXT NOT NULL,
+                item_id INTEGER NOT NULL,
+                reaction_type TEXT NOT NULL,  -- like, save, share, dismiss
+                reaction_data TEXT,  -- JSON 추가 반응 데이터
+                reaction_date TEXT,
+                FOREIGN KEY (item_id) REFERENCES gallery_items (item_id)
+            )
+        """
+        )
+
+        # 사용자 미술관 통계 (기본 컬럼만)
         cursor.execute(
             """
             CREATE TABLE IF NOT EXISTS gallery_stats (
@@ -150,9 +207,85 @@ class GalleryManager:
         """
         )
 
-        conn.commit()
+    def _run_migrations(self, cursor):
+        """데이터베이스 마이그레이션"""
+
+        # 마이그레이션 추적 테이블
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS migrations (
+                migration_id TEXT PRIMARY KEY,
+                executed_date TEXT
+            )
+        """
+        )
+
+        # Migration 1: gallery_stats에 메시지 반응 컬럼 추가
+        cursor.execute(
+            "SELECT name FROM pragma_table_info('gallery_stats') WHERE name='total_message_reactions'"
+        )
+        if not cursor.fetchone():
+            logger.info("Migration 1: gallery_stats에 메시지 반응 컬럼 추가")
+            cursor.execute(
+                "ALTER TABLE gallery_stats ADD COLUMN total_message_reactions INTEGER DEFAULT 0"
+            )
+            cursor.execute(
+                "ALTER TABLE gallery_stats ADD COLUMN positive_reaction_rate REAL DEFAULT 0.0"
+            )
+
+            cursor.execute(
+                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
+                ("add_message_reaction_columns", datetime.now().isoformat()),
+            )
+
+        # Migration 2: 기존 데이터의 누락된 컬럼들 기본값으로 채우기
+        cursor.execute(
+            "SELECT migration_id FROM migrations WHERE migration_id = ?",
+            ("fill_missing_columns",),
+        )
+        if not cursor.fetchone():
+            logger.info("Migration 2: 기존 데이터 정리")
+
+            # curator_message와 message_reactions가 NULL인 경우 기본값 설정
+            cursor.execute(
+                """
+                UPDATE gallery_items 
+                SET curator_message = '{}', message_reactions = '[]' 
+                WHERE curator_message IS NULL OR message_reactions IS NULL
+                """
+            )
+
+            cursor.execute(
+                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
+                ("fill_missing_columns", datetime.now().isoformat()),
+            )
+
+    def get_incomplete_journeys(self, user_id: str) -> List[GalleryItem]:
+        """미완성 여정 목록 반환"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # curator_message가 비어있는 아이템들 조회 (미완성)
+        cursor.execute(
+            """
+            SELECT * FROM gallery_items 
+            WHERE user_id = ? AND (curator_message IS NULL OR curator_message = '' OR curator_message = '{}')
+            ORDER BY created_date DESC
+            """,
+            (user_id,),
+        )
+
+        rows = cursor.fetchall()
         conn.close()
-        logger.info("미술관 데이터베이스가 초기화되었습니다.")
+
+        incomplete_items = []
+        for row in rows:
+            item = self._row_to_gallery_item(row)
+            # 실제로 미완성인지 다시 한번 체크
+            if not item.get_completion_status()["completed"]:
+                incomplete_items.append(item)
+
+        return incomplete_items
 
     def create_gallery_item(
         self,
@@ -180,8 +313,8 @@ class GalleryManager:
             """
             INSERT INTO gallery_items 
             (user_id, diary_text, emotion_keywords, vad_scores, 
-             reflection_prompt, reflection_image_path, created_date, coping_style)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             reflection_prompt, reflection_image_path, curator_message, message_reactions, created_date, coping_style)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 user_id,
@@ -190,6 +323,8 @@ class GalleryManager:
                 json.dumps(vad_scores),
                 reflection_prompt,
                 str(reflection_path),
+                "{}",  # 빈 curator_message
+                "[]",  # 빈 message_reactions
                 datetime.now().isoformat(),
                 coping_style,
             ),
@@ -235,22 +370,16 @@ class GalleryManager:
 
         return success
 
-    def add_hope_image(
-        self, item_id: int, hope_prompt: str, hope_image: Image.Image
+    def add_curator_message(
+        self, item_id: int, curator_message: Dict[str, Any]
     ) -> bool:
-        """희망 이미지 추가 (ACT 4단계 완료)"""
+        """큐레이터 메시지 추가 (ACT 4단계 완료)"""
 
         # 기존 아이템 정보 조회
         item = self.get_gallery_item(item_id)
         if not item:
             logger.error(f"미술관 아이템을 찾을 수 없습니다: {item_id}")
             return False
-
-        # 희망 이미지 저장
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        hope_filename = f"{item.user_id}_{timestamp}_hope.png"
-        hope_path = self.images_dir / "hope" / hope_filename
-        hope_image.save(hope_path)
 
         # 데이터베이스 업데이트
         conn = sqlite3.connect(self.db_path)
@@ -259,10 +388,10 @@ class GalleryManager:
         cursor.execute(
             """
             UPDATE gallery_items 
-            SET hope_prompt = ?, hope_image_path = ?
+            SET curator_message = ?
             WHERE item_id = ?
         """,
-            (hope_prompt, str(hope_path), item_id),
+            (json.dumps(curator_message), item_id),
         )
 
         success = cursor.rowcount > 0
@@ -270,9 +399,61 @@ class GalleryManager:
         conn.close()
 
         if success:
-            logger.info(f"희망 이미지가 추가되었습니다: 아이템 {item_id}")
+            logger.info(f"큐레이터 메시지가 추가되었습니다: 아이템 {item_id}")
 
         return success
+
+    def record_message_reaction(
+        self, item_id: int, reaction_type: str, reaction_data: Dict[str, Any] = None
+    ) -> bool:
+        """메시지 반응 기록"""
+
+        # 기존 아이템 조회
+        item = self.get_gallery_item(item_id)
+        if not item:
+            logger.error(f"미술관 아이템을 찾을 수 없습니다: {item_id}")
+            return False
+
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # 반응 기록 테이블에 저장
+        cursor.execute(
+            """
+            INSERT INTO message_reactions 
+            (user_id, item_id, reaction_type, reaction_data, reaction_date)
+            VALUES (?, ?, ?, ?, ?)
+        """,
+            (
+                item.user_id,
+                item_id,
+                reaction_type,
+                json.dumps(reaction_data) if reaction_data else "{}",
+                datetime.now().isoformat(),
+            ),
+        )
+
+        # 아이템의 반응 목록 업데이트
+        current_reactions = item.message_reactions.copy()
+        current_reactions.append(reaction_type)
+
+        cursor.execute(
+            """
+            UPDATE gallery_items 
+            SET message_reactions = ?
+            WHERE item_id = ?
+        """,
+            (json.dumps(current_reactions), item_id),
+        )
+
+        conn.commit()
+        conn.close()
+
+        # 통계 업데이트
+        self._update_user_stats(item.user_id)
+
+        logger.info(f"메시지 반응이 기록되었습니다: {reaction_type} - 아이템 {item_id}")
+        return True
 
     def get_gallery_item(self, item_id: int) -> Optional[GalleryItem]:
         """미술관 아이템 조회"""
@@ -333,8 +514,10 @@ class GalleryManager:
             reflection_image_path=row[6] or "",
             guestbook_title=row[7] or "",
             guestbook_tags=json.loads(row[8]) if row[8] else [],
-            hope_prompt=row[9] or "",
-            hope_image_path=row[10] or "",
+            curator_message=json.loads(row[9]) if row[9] and row[9] != "{}" else {},
+            message_reactions=(
+                json.loads(row[10]) if row[10] and row[10] != "[]" else []
+            ),
             guided_question=row[11] or "",
             created_date=row[12] or "",
             coping_style=row[13] or "balanced",
@@ -436,6 +619,75 @@ class GalleryManager:
 
         return analytics
 
+    def get_message_reaction_analytics(self, user_id: str) -> Dict[str, Any]:
+        """메시지 반응 분석"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        # 반응 유형별 집계
+        cursor.execute(
+            """
+            SELECT reaction_type, COUNT(*) 
+            FROM message_reactions 
+            WHERE user_id = ?
+            GROUP BY reaction_type
+        """,
+            (user_id,),
+        )
+        reaction_counts = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # 시간별 반응 패턴
+        cursor.execute(
+            """
+            SELECT DATE(reaction_date) as date, COUNT(*) 
+            FROM message_reactions 
+            WHERE user_id = ?
+            GROUP BY DATE(reaction_date)
+            ORDER BY date DESC
+            LIMIT 30
+        """,
+            (user_id,),
+        )
+        daily_reactions = {row[0]: row[1] for row in cursor.fetchall()}
+
+        # 긍정적 반응률
+        total_reactions = sum(reaction_counts.values())
+        positive_reactions = sum(
+            reaction_counts.get(rt, 0) for rt in ["like", "save", "share"]
+        )
+
+        conn.close()
+
+        return {
+            "total_reactions": total_reactions,
+            "reaction_distribution": reaction_counts,
+            "positive_reaction_rate": (
+                positive_reactions / total_reactions if total_reactions > 0 else 0
+            ),
+            "daily_reaction_pattern": daily_reactions,
+            "engagement_level": self._calculate_engagement_level(
+                total_reactions, positive_reactions
+            ),
+        }
+
+    def _calculate_engagement_level(
+        self, total_reactions: int, positive_reactions: int
+    ) -> str:
+        """참여도 수준 계산"""
+        if total_reactions == 0:
+            return "새로운 사용자"
+
+        positive_rate = positive_reactions / total_reactions
+
+        if positive_rate >= 0.8 and total_reactions >= 10:
+            return "매우 높음"
+        elif positive_rate >= 0.6 and total_reactions >= 5:
+            return "높음"
+        elif positive_rate >= 0.4:
+            return "보통"
+        else:
+            return "낮음"
+
     def _analyze_emotion_trends(self, vad_data: List[List[float]]) -> Dict[str, Any]:
         """감정 트렌드 분석"""
         if not vad_data:
@@ -471,7 +723,6 @@ class GalleryManager:
         if not titles:
             return {}
 
-        # 간단한 감정 분석 (실제 구현에서는 더 정교한 분석 도구 사용 가능)
         positive_words = {
             "light",
             "bright",
@@ -502,14 +753,14 @@ class GalleryManager:
         }
 
     def _calculate_completion_rate(self, user_id: str) -> float:
-        """완료율 계산"""
+        """완료율 계산 (curator_message 기준)"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         cursor.execute(
             """
             SELECT COUNT(*) as total,
-                   SUM(CASE WHEN hope_image_path != '' THEN 1 ELSE 0 END) as completed
+                   SUM(CASE WHEN curator_message != '' AND curator_message != '{}' THEN 1 ELSE 0 END) as completed
             FROM gallery_items WHERE user_id = ?
         """,
             (user_id,),
@@ -588,6 +839,23 @@ class GalleryManager:
         total_visits = visit_result[0] if visit_result[0] else 0
         avg_duration = visit_result[1] if visit_result[1] else 0.0
 
+        # 메시지 반응 통계
+        cursor.execute(
+            """
+            SELECT COUNT(*), 
+                   SUM(CASE WHEN reaction_type IN ('like', 'save', 'share') THEN 1 ELSE 0 END)
+            FROM message_reactions WHERE user_id = ?
+        """,
+            (user_id,),
+        )
+        reaction_result = cursor.fetchone()
+        total_reactions = reaction_result[0] if reaction_result[0] else 0
+        positive_reactions = reaction_result[1] if reaction_result[1] else 0
+
+        positive_rate = (
+            positive_reactions / total_reactions if total_reactions > 0 else 0.0
+        )
+
         # 선호 대처 스타일
         cursor.execute(
             """
@@ -601,25 +869,50 @@ class GalleryManager:
         fav_style_result = cursor.fetchone()
         fav_style = fav_style_result[0] if fav_style_result else "balanced"
 
-        # 통계 테이블 업데이트
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO gallery_stats
-            (user_id, total_items, first_item_date, last_item_date, 
-             total_visits, avg_viewing_duration, favorite_coping_style, updated_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                user_id,
-                total_items,
-                first_date,
-                last_date,
-                total_visits,
-                avg_duration,
-                fav_style,
-                datetime.now().isoformat(),
-            ),
-        )
+        # 통계 테이블 업데이트 (컬럼 존재 여부 체크)
+        try:
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO gallery_stats
+                (user_id, total_items, first_item_date, last_item_date, 
+                 total_visits, avg_viewing_duration, favorite_coping_style, 
+                 total_message_reactions, positive_reaction_rate, updated_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    user_id,
+                    total_items,
+                    first_date,
+                    last_date,
+                    total_visits,
+                    avg_duration,
+                    fav_style,
+                    total_reactions,
+                    positive_rate,
+                    datetime.now().isoformat(),
+                ),
+            )
+        except sqlite3.OperationalError as e:
+            # 컬럼이 없는 경우 기본 컬럼만 업데이트
+            logger.warning(f"일부 통계 컬럼 업데이트 실패: {e}")
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO gallery_stats
+                (user_id, total_items, first_item_date, last_item_date, 
+                 total_visits, avg_viewing_duration, favorite_coping_style, updated_date)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+                (
+                    user_id,
+                    total_items,
+                    first_date,
+                    last_date,
+                    total_visits,
+                    avg_duration,
+                    fav_style,
+                    datetime.now().isoformat(),
+                ),
+            )
 
         conn.commit()
         conn.close()
@@ -639,6 +932,7 @@ class GalleryManager:
             "total_items": len(items),
             "items": [item.to_dict() for item in items],
             "analytics": self.get_gallery_analytics(user_id),
+            "message_analytics": self.get_message_reaction_analytics(user_id),
         }
 
         # JSON 파일 저장
@@ -649,13 +943,14 @@ class GalleryManager:
         # 이미지 파일들 복사
         images_copied = 0
         for item in items:
-            for img_path in [item.reflection_image_path, item.hope_image_path]:
-                if img_path and Path(img_path).exists():
-                    try:
-                        shutil.copy2(img_path, export_path)
-                        images_copied += 1
-                    except Exception as e:
-                        logger.warning(f"이미지 복사 실패: {img_path}, {e}")
+            if item.reflection_image_path and Path(item.reflection_image_path).exists():
+                try:
+                    shutil.copy2(item.reflection_image_path, export_path)
+                    images_copied += 1
+                except Exception as e:
+                    logger.warning(
+                        f"이미지 복사 실패: {item.reflection_image_path}, {e}"
+                    )
 
         result = {
             "success": True,
@@ -678,18 +973,13 @@ class GalleryManager:
         # 삭제할 아이템들의 이미지 경로 조회
         cursor.execute(
             """
-            SELECT reflection_image_path, hope_image_path
+            SELECT reflection_image_path
             FROM gallery_items WHERE created_date < ?
         """,
             (cutoff_date,),
         )
 
-        image_paths = []
-        for row in cursor.fetchall():
-            if row[0]:
-                image_paths.append(row[0])
-            if row[1]:
-                image_paths.append(row[1])
+        image_paths = [row[0] for row in cursor.fetchall() if row[0]]
 
         # 데이터베이스에서 삭제
         cursor.execute(
@@ -699,6 +989,10 @@ class GalleryManager:
 
         cursor.execute(
             "DELETE FROM gallery_visits WHERE visit_date < ?", (cutoff_date,)
+        )
+
+        cursor.execute(
+            "DELETE FROM message_reactions WHERE reaction_date < ?", (cutoff_date,)
         )
 
         conn.commit()
