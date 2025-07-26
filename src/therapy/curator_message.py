@@ -80,214 +80,61 @@ class CuratorMessageSystem:
             logger.warning(
                 "CuratorGPT가 주입되지 않아 메시지 변형을 생성할 수 없습니다."
             )
-            return [base_message]
+            return []
 
-        variations = [base_message]
-
-        # GPT를 통한 메시지 변형 생성
-        try:
-            for i in range(variation_count - 1):
-                # 기본 메시지 데이터 추출
-                user_profile = base_message.get("user_profile")
-                gallery_item = base_message.get("gallery_item")
-
-                if not user_profile or not gallery_item:
-                    logger.warning("메시지 변형 생성을 위한 데이터 부족")
-                    continue
-
-                # 변형 컨텍스트 설정
-                variation_context = {
-                    "variation_request": True,
-                    "variation_index": i + 1,
-                    "base_message_id": base_message.get("message_id"),
-                    "tone_adjustment": self._get_tone_variation(i),
-                }
-
+        variations = []
+        for i in range(variation_count):
+            try:
                 # GPT로 변형 생성
-                variation_result = self.curator_gpt.generate_personalized_message(
-                    user_profile=user_profile,
-                    gallery_item=gallery_item,
-                    personalization_context=variation_context,
+                variation = self.curator_gpt.generate_message_variation(
+                    base_message=base_message, variation_index=i
                 )
+                if variation:
+                    variations.append(variation)
+            except Exception as e:
+                logger.error(f"메시지 변형 {i} 생성 실패: {e}")
 
-                if variation_result:
-                    # 변형 ID 설정
-                    variation_result["message_id"] = (
-                        f"{base_message.get('message_id', 'unknown')}_var{i+1}"
-                    )
-                    variations.append(variation_result)
-
-            logger.info(f"GPT 기반 메시지 변형 생성 완료: {len(variations)}개")
-
-        except Exception as e:
-            logger.error(f"GPT 메시지 변형 생성 실패: {e}")
-
+        logger.info(f"총 {len(variations)}개의 메시지 변형이 생성되었습니다.")
         return variations
 
-    def _get_tone_variation(self, variation_index: int) -> str:
-        """변형별 톤 조정 요청"""
-        tone_variations = [
-            "slightly_more_encouraging",
-            "more_reflective",
-            "warmer_and_supportive",
-        ]
-
-        return tone_variations[variation_index % len(tone_variations)]
-
-    def analyze_message_effectiveness(
-        self, message_reactions: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """GPT 생성 메시지 효과성 분석"""
-
-        if not message_reactions:
-            return {"total_messages": 0, "insights": [], "generation_method": "gpt"}
-
-        # 반응 유형별 집계
-        reaction_counts = {}
-        gpt_message_count = 0
-
-        for reaction in message_reactions:
-            reaction_type = reaction.get("reaction_type", "unknown")
-            reaction_counts[reaction_type] = reaction_counts.get(reaction_type, 0) + 1
-
-            # GPT 생성 메시지인지 확인
-            if reaction.get("generation_method") == "gpt":
-                gpt_message_count += 1
-
-        # 대처 스타일별 GPT 효과성
-        style_effectiveness = {}
-        for reaction in message_reactions:
-            style = reaction.get("coping_style", "unknown")
-            if style not in style_effectiveness:
-                style_effectiveness[style] = {
-                    "positive": 0,
-                    "total": 0,
-                    "gpt_positive": 0,
-                    "gpt_total": 0,
-                }
-
-            style_effectiveness[style]["total"] += 1
-            if reaction.get("reaction_type") in ["like", "save", "share"]:
-                style_effectiveness[style]["positive"] += 1
-
-            # GPT 생성 메시지 추적
-            if reaction.get("generation_method") == "gpt":
-                style_effectiveness[style]["gpt_total"] += 1
-                if reaction.get("reaction_type") in ["like", "save", "share"]:
-                    style_effectiveness[style]["gpt_positive"] += 1
-
-        # 인사이트 생성
-        insights = []
-        total_positive = sum(
-            reaction_counts.get(rt, 0) for rt in ["like", "save", "share"]
-        )
-        total_reactions = len(message_reactions)
-
-        if total_reactions > 0:
-            positive_rate = total_positive / total_reactions
-            gpt_ratio = gpt_message_count / total_reactions
-
-            if positive_rate > 0.7:
-                insights.append(
-                    "GPT 생성 메시지가 사용자들에게 긍정적으로 받아들여지고 있습니다."
-                )
-            elif positive_rate > 0.5:
-                insights.append(
-                    "GPT 메시지 효과가 적절하지만 개인화 개선이 필요할 수 있습니다."
-                )
-            else:
-                insights.append(
-                    "GPT 메시지 전략을 재검토하고 프롬프트 엔지니어링을 개선해야 합니다."
-                )
-
-            if gpt_ratio > 0.8:
-                insights.append(
-                    f"전체 메시지의 {gpt_ratio:.1%}가 GPT로 생성되어 완전 전환이 성공적입니다."
-                )
-
-        return {
-            "total_messages": total_reactions,
-            "gpt_messages": gpt_message_count,
-            "gpt_ratio": (
-                gpt_message_count / total_reactions if total_reactions > 0 else 0
-            ),
-            "reaction_distribution": reaction_counts,
-            "positive_reaction_rate": (
-                total_positive / total_reactions if total_reactions > 0 else 0
-            ),
-            "style_effectiveness": style_effectiveness,
-            "insights": insights,
-            "generation_method": "gpt_analysis",
-        }
-
-    def get_gpt_performance_metrics(self, user_id: str) -> Dict[str, Any]:
-        """GPT 큐레이터 성능 메트릭 조회"""
-
-        if not self.curator_gpt:
-            return {"error": "CuratorGPT가 주입되지 않았습니다.", "available": False}
-
-        try:
-            # CuratorGPT의 성능 메트릭 조회
-            performance = self.curator_gpt.get_user_performance_metrics(user_id)
-
-            return {
-                "user_id": user_id,
-                "gpt_performance": performance,
-                "system_status": "gpt_only",
-                "fallback_usage": performance.get("fallback_usage_rate", 0),
-                "avg_generation_time": performance.get("avg_generation_time", 0),
-                "quality_score": performance.get("avg_quality_score", 0),
-                "personalization_score": performance.get(
-                    "avg_personalization_score", 0
-                ),
-            }
-
-        except Exception as e:
-            logger.error(f"GPT 성능 메트릭 조회 실패: {e}")
-            return {"error": str(e), "user_id": user_id, "available": False}
-
-    def validate_gpt_message_quality(self, message: Dict[str, Any]) -> Dict[str, Any]:
+    def validate_message_quality(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """GPT 생성 메시지 품질 검증"""
 
         validation_result = {
             "is_valid": True,
-            "quality_score": 0.0,
+            "quality_score": 0.5,  # 기본 점수
             "issues": [],
             "recommendations": [],
         }
 
-        content = message.get("content", {})
-        if not content:
-            validation_result["is_valid"] = False
-            validation_result["issues"].append("메시지 내용이 비어있습니다.")
+        # 기본 구조 확인
+        required_fields = ["content", "metadata"]
+        for field in required_fields:
+            if field not in message:
+                validation_result["issues"].append(f"필수 필드가 없습니다: {field}")
+                validation_result["is_valid"] = False
+
+        if not validation_result["is_valid"]:
             return validation_result
 
-        # 필수 섹션 확인
-        required_sections = [
+        # content 세부 검증
+        content = message.get("content", {})
+        expected_sections = [
             "opening",
             "recognition",
             "personal_note",
             "guidance",
             "closing",
         ]
-        missing_sections = []
 
-        for section in required_sections:
-            if not content.get(section):
-                missing_sections.append(section)
-
+        missing_sections = [
+            section for section in expected_sections if not content.get(section)
+        ]
         if missing_sections:
             validation_result["issues"].append(
-                f"누락된 섹션: {', '.join(missing_sections)}"
+                f"빠진 섹션: {', '.join(missing_sections)}"
             )
-            validation_result["quality_score"] -= 0.2 * len(missing_sections)
-
-        # 개인화 수준 확인
-        personalization_data = message.get("personalization_data", {})
-        if personalization_data:
-            validation_result["quality_score"] += 0.3
-        else:
-            validation_result["recommendations"].append("개인화 요소를 더 강화하세요.")
+            validation_result["quality_score"] -= 0.2
 
         # 메시지 길이 확인
         total_length = sum(len(str(section)) for section in content.values())
@@ -330,20 +177,17 @@ class CuratorMessageSystem:
         return {
             "curator_gpt_injected": self.curator_gpt is not None,
             "generation_method": "gpt_only",
-            "fallback_available": False,  # 풀백 시스템 완전 제거
-            "hardcoded_templates": False,  # 하드코딩 템플릿 완전 제거
+            "fallback_available": False,
+            "hardcoded_templates": False,
             "message_variations_supported": True,
             "quality_validation_enabled": True,
+            "handover_status": "completed",
         }
 
     def emergency_message_generation(
         self, user_id: str, error_context: str
     ) -> Dict[str, Any]:
-        """응급 메시지 생성 (GPT 완전 실패시)
-
-        GPT가 완전히 실패했을 때만 사용하는 최소한의 응급 메시지
-        하드코딩된 풀백이 아닌 간단한 오류 처리용
-        """
+        """응급 메시지 생성"""
 
         logger.error(
             f"GPT 큐레이터 완전 실패로 응급 메시지 생성: 사용자 {user_id}, 오류: {error_context}"
@@ -354,11 +198,11 @@ class CuratorMessageSystem:
             "user_id": user_id,
             "message_type": "emergency_placeholder",
             "content": {
-                "opening": "시스템에 일시적인 문제가 발생했습니다.",
-                "recognition": "당신의 감정 여정은 소중하게 기록되었습니다.",
-                "personal_note": "잠시 후 다시 시도해주시면 개인화된 메시지를 받으실 수 있습니다.",
-                "guidance": "현재 경험한 감정을 마음에 간직해주세요.",
-                "closing": "곧 다시 만나뵙겠습니다.",
+                "opening": "A temporary system issue has occurred.",
+                "recognition": "Your emotional journey has been carefully recorded.",
+                "personal_note": "Please try again shortly to receive your personalized message.",
+                "guidance": "Please hold the emotions you've experienced close to your heart.",
+                "closing": "We'll meet again soon.",
             },
             "metadata": {
                 "generation_method": "emergency",
@@ -373,3 +217,80 @@ class CuratorMessageSystem:
         }
 
         return emergency_message
+
+    def get_message_analytics(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """메시지 분석 정보 반환"""
+        content = message.get("content", {})
+
+        analytics = {
+            "total_word_count": sum(
+                len(str(section).split()) for section in content.values()
+            ),
+            "total_character_count": sum(
+                len(str(section)) for section in content.values()
+            ),
+            "section_count": len([v for v in content.values() if v]),
+            "message_type": message.get("message_type", "unknown"),
+            "generation_method": message.get("metadata", {}).get(
+                "generation_method", "unknown"
+            ),
+        }
+
+        # 섹션별 분석
+        for section_name, section_content in content.items():
+            if section_content:
+                analytics[f"{section_name}_word_count"] = len(
+                    str(section_content).split()
+                )
+                analytics[f"{section_name}_char_count"] = len(str(section_content))
+
+        return analytics
+
+    def get_user_performance_metrics(self, user_id: str) -> Dict[str, Any]:
+        """사용자별 성능 메트릭 반환"""
+        # 이 메서드는 실제로는 데이터베이스에서 사용자의 메시지 히스토리를 분석해야 함
+        # 현재는 기본 구조만 제공
+        return {
+            "user_id": user_id,
+            "total_messages_generated": 0,
+            "average_quality_score": 0.0,
+            "successful_generations": 0,
+            "failed_generations": 0,
+            "emergency_messages": 0,
+            "preferred_message_style": "unknown",
+            "last_generation_timestamp": None,
+        }
+
+    def validate_message_basic_quality(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """메시지 기본 품질 검증"""
+        basic_validation = {
+            "has_required_structure": False,
+            "minimum_length_met": False,
+            "has_content": False,
+            "overall_valid": False,
+        }
+
+        # 기본 구조 확인
+        if "content" in message and "metadata" in message:
+            basic_validation["has_required_structure"] = True
+
+        # 내용 확인
+        content = message.get("content", {})
+        if content and any(content.values()):
+            basic_validation["has_content"] = True
+
+        # 최소 길이 확인
+        total_length = sum(len(str(section)) for section in content.values())
+        if total_length >= 50:  # 최소 50자
+            basic_validation["minimum_length_met"] = True
+
+        # 전체 유효성
+        basic_validation["overall_valid"] = all(
+            [
+                basic_validation["has_required_structure"],
+                basic_validation["minimum_length_met"],
+                basic_validation["has_content"],
+            ]
+        )
+
+        return basic_validation
