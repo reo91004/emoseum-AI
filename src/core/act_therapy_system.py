@@ -328,7 +328,7 @@ class ACTTherapySystem:
             raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
 
         guided_question = self.prompt_architect.create_guided_question(
-            guestbook_title, gallery_item.emotion_keywords
+            guestbook_title, gallery_item.emotion_keywords, user_id
         )
 
         success = self.gallery_manager.complete_guestbook(
