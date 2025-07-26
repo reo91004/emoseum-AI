@@ -241,11 +241,15 @@ class ACTTherapySystem:
             logger.error(f"감정 여정 처리 실패: {e}")
             raise RuntimeError(f"감정 여정 처리에 실패했습니다: {e}")
 
-    def _analyze_emotion_with_gpt(self, diary_text: str, user_id: str = "anonymous") -> Dict[str, Any]:
+    def _analyze_emotion_with_gpt(
+        self, diary_text: str, user_id: str = "anonymous"
+    ) -> Dict[str, Any]:
         """GPT를 통한 감정 분석"""
         try:
             # GPT로 감정 분석 요청
-            analysis_result = self.gpt_service.analyze_emotion(diary_text, user_id=user_id)
+            analysis_result = self.gpt_service.analyze_emotion(
+                diary_text, user_id=user_id
+            )
 
             if analysis_result["success"]:
                 return {
