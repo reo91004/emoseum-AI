@@ -3,6 +3,7 @@
 import time
 import json
 import hashlib
+import os
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timedelta
 import logging
@@ -27,8 +28,13 @@ from ..utils.cost_tracker import CostTracker
 class GPTService:
     """OpenAI API 호출 핵심 서비스"""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini"):
-        self.api_key = api_key
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+        cost_tracker: Optional[CostTracker] = None,
+    ):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
         self.client = None
 
@@ -47,8 +53,13 @@ class GPTService:
         self.max_delay = 30.0  # 초
         self.timeout = 30
 
-        # 토큰 및 비용 추적
-        self.cost_tracker = CostTracker()
+        # 토큰 및 비용 추적 (외부에서 주입받거나 자체 생성)
+        if cost_tracker is not None:
+            self.cost_tracker = cost_tracker
+            logger.info("외부 CostTracker 인스턴스가 주입되었습니다.")
+        else:
+            self.cost_tracker = CostTracker("default_cost_tracking.db")
+            logger.info("새로운 CostTracker 인스턴스가 생성되었습니다.")
 
         # 응답 캐싱 (메모리 기반 간단 캐시)
         self.cache_enabled = True
@@ -56,7 +67,7 @@ class GPTService:
         self.cache_ttl = 3600  # 1시간
 
         # OpenAI 클라이언트 초기화
-        if OPENAI_AVAILABLE and api_key:
+        if OPENAI_AVAILABLE and self.api_key:
             self._initialize_client()
         else:
             logger.warning("GPT 서비스가 시뮬레이션 모드로 실행됩니다.")
@@ -76,6 +87,7 @@ class GPTService:
         emotion_keywords: List[str],
         coping_style: str,
         visual_preferences: Dict[str, Any],
+        user_id: str = "anonymous",
         **kwargs,
     ) -> Dict[str, Any]:
         """일기 내용을 기반으로 이미지 프롬프트 엔지니어링"""
@@ -101,6 +113,7 @@ class GPTService:
             max_tokens=kwargs.get("max_tokens", 150),
             temperature=kwargs.get("temperature", 0.7),
             purpose="prompt_engineering",
+            user_id=user_id,
         )
 
         if response["success"]:
@@ -111,28 +124,25 @@ class GPTService:
 
             return {
                 "success": True,
-                "enhanced_prompt": enhanced_prompt,
+                "prompt": enhanced_prompt,
                 "original_response": response["content"],
-                "token_usage": response.get("token_usage", {}),
-                "processing_time": response.get("processing_time", 0),
-                "metadata": {
-                    "coping_style": coping_style,
-                    "emotion_keywords": emotion_keywords,
-                    "visual_preferences": visual_preferences,
-                },
+                "token_usage": response["token_usage"],
+                "processing_time": response["processing_time"],
+                "safety_check": {"is_safe": True},  # 추후 안전성 검증 추가
             }
-        else:
-            return {
-                "success": False,
-                "error": response["error"],
-                "fallback_needed": True,
-            }
+
+        return {
+            "success": False,
+            "error": response.get("error", "프롬프트 생성 실패"),
+            "fallback": False,
+        }
 
     def generate_curator_message(
         self,
         user_profile: Dict[str, Any],
         gallery_item: Dict[str, Any],
         personalization_context: Dict[str, Any],
+        user_id: str = "anonymous",
         **kwargs,
     ) -> Dict[str, Any]:
         """개인화된 큐레이터 메시지 생성"""
@@ -153,31 +163,122 @@ class GPTService:
 
         response = self._make_api_call(
             messages=messages,
-            max_tokens=kwargs.get("max_tokens", 300),
+            max_tokens=kwargs.get("max_tokens", 500),
             temperature=kwargs.get("temperature", 0.8),
             purpose="curator_message",
+            user_id=user_id,
         )
 
         if response["success"]:
-            # 큐레이터 메시지 구조화
+            # 메시지 구조화
             structured_message = self._structure_curator_message(
                 response["content"], user_profile, gallery_item
             )
 
             return {
                 "success": True,
-                "curator_message": structured_message,
-                "original_response": response["content"],
-                "token_usage": response.get("token_usage", {}),
-                "processing_time": response.get("processing_time", 0),
-                "personalization_data": personalization_context,
+                "message": structured_message,
+                "raw_content": response["content"],
+                "token_usage": response["token_usage"],
+                "processing_time": response["processing_time"],
+                "safety_check": {"is_safe": True},  # 추후 안전성 검증 추가
             }
-        else:
-            return {
-                "success": False,
-                "error": response["error"],
-                "fallback_needed": True,
-            }
+
+        return {
+            "success": False,
+            "error": response.get("error", "큐레이터 메시지 생성 실패"),
+            "fallback": False,
+        }
+
+    def analyze_emotion(
+        self,
+        diary_text: str,
+        user_id: str = "anonymous",
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """일기 텍스트의 감정 분석"""
+
+        # 시스템 메시지 구성
+        system_message = """You are an expert emotion analysis AI specializing in therapeutic applications.
+
+Your task is to analyze diary text and extract:
+1. Emotional keywords (3-5 main emotions)
+2. VAD scores (Valence, Arousal, Dominance on scale 0-1)
+3. Confidence level of the analysis
+
+Guidelines:
+- Focus on constructive emotional understanding
+- Consider cultural context and therapeutic value
+- Provide accurate VAD psychological scores
+- Use clear, therapeutic language for emotions
+
+Response format (JSON):
+{
+    "keywords": ["emotion1", "emotion2", "emotion3"],
+    "vad_scores": [valence, arousal, dominance],
+    "confidence": 0.85,
+    "primary_emotion": "main_emotion",
+    "emotional_intensity": "low/medium/high"
+}"""
+
+        # 사용자 메시지 구성
+        user_message = f"""Analyze the emotional content of this diary entry:
+
+DIARY TEXT: "{diary_text}"
+
+Please provide a comprehensive emotional analysis including:
+1. 3-5 key emotional keywords in Korean
+2. VAD scores (Valence: positive/negative, Arousal: calm/excited, Dominance: controlled/overwhelmed)
+3. Your confidence in this analysis
+4. The primary emotion
+5. Overall emotional intensity
+
+Provide the analysis in the specified JSON format."""
+
+        # GPT API 호출
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message},
+        ]
+
+        response = self._make_api_call(
+            messages=messages,
+            max_tokens=kwargs.get("max_tokens", 200),
+            temperature=kwargs.get("temperature", 0.3),  # 낮은 온도로 일관성 있는 분석
+            purpose="emotion_analysis",
+            user_id=user_id,
+        )
+
+        if response["success"]:
+            try:
+                # JSON 파싱 시도
+                analysis_data = self._parse_emotion_analysis(response["content"])
+
+                return {
+                    "success": True,
+                    "keywords": analysis_data.get("keywords", ["중성"]),
+                    "vad_scores": tuple(
+                        analysis_data.get("vad_scores", [0.5, 0.5, 0.5])
+                    ),
+                    "confidence": analysis_data.get("confidence", 0.8),
+                    "primary_emotion": analysis_data.get("primary_emotion", "중성"),
+                    "emotional_intensity": analysis_data.get(
+                        "emotional_intensity", "medium"
+                    ),
+                    "token_usage": response["token_usage"],
+                    "processing_time": response["processing_time"],
+                }
+            except Exception as e:
+                logger.warning(f"감정 분석 결과 파싱 실패: {e}, 대체 분석 사용")
+                return self._fallback_emotion_analysis(diary_text)
+
+        return {
+            "success": False,
+            "error": response.get("error", "감정 분석 실패"),
+            "keywords": ["중성"],
+            "vad_scores": (0.5, 0.5, 0.5),
+            "confidence": 0.0,
+        }
 
     def _make_api_call(
         self,
@@ -185,49 +286,42 @@ class GPTService:
         max_tokens: int = 150,
         temperature: float = 0.7,
         purpose: str = "general",
-        **kwargs,
+        user_id: str = "anonymous",
     ) -> Dict[str, Any]:
         """OpenAI API 호출 (재시도 로직 포함)"""
 
-        if not self.client:
-            return self._simulate_api_call(messages, purpose)
-
         # 캐시 확인
-        cache_key = self._generate_cache_key(messages, max_tokens, temperature)
-        if self.cache_enabled and cache_key in self.cache:
-            cached_response = self.cache[cache_key]
-            if time.time() - cached_response["timestamp"] < self.cache_ttl:
-                logger.info("캐시된 응답을 반환합니다.")
-                return cached_response["response"]
+        if self.cache_enabled:
+            cache_key = self._generate_cache_key(messages, max_tokens, temperature)
+            if cache_key in self.cache:
+                cached_item = self.cache[cache_key]
+                if time.time() - cached_item["timestamp"] < self.cache_ttl:
+                    logger.info(f"캐시된 응답 반환 ({purpose})")
+                    return cached_item["response"]
 
-        # API 호출 준비
-        api_params = {
-            "model": self.model,
-            "messages": messages,
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-            "top_p": kwargs.get("top_p", self.default_params["top_p"]),
-            "frequency_penalty": kwargs.get(
-                "frequency_penalty", self.default_params["frequency_penalty"]
-            ),
-            "presence_penalty": kwargs.get(
-                "presence_penalty", self.default_params["presence_penalty"]
-            ),
-        }
+        # OpenAI 클라이언트가 없으면 시뮬레이션
+        if not self.client:
+            return self._simulate_api_call(messages, purpose, user_id)
 
-        start_time = time.time()
-
+        # 실제 API 호출
         for attempt in range(self.max_retries):
             try:
-                # API 호출
-                response = self.client.chat.completions.create(**api_params)
+                start_time = time.time()
+
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    timeout=self.timeout,
+                )
 
                 processing_time = time.time() - start_time
 
-                # 응답 구성
+                # 결과 구성
                 result = {
                     "success": True,
-                    "content": response.choices[0].message.content.strip(),
+                    "content": response.choices[0].message.content,
                     "token_usage": {
                         "prompt_tokens": response.usage.prompt_tokens,
                         "completion_tokens": response.usage.completion_tokens,
@@ -240,6 +334,7 @@ class GPTService:
 
                 # 비용 추적
                 self.cost_tracker.record_api_call(
+                    user_id=user_id,
                     purpose=purpose,
                     model=self.model,
                     token_usage=result["token_usage"],
@@ -288,7 +383,7 @@ class GPTService:
         }
 
     def _simulate_api_call(
-        self, messages: List[Dict[str, str]], purpose: str
+        self, messages: List[Dict[str, str]], purpose: str, user_id: str = "anonymous"
     ) -> Dict[str, Any]:
         """API 호출 시뮬레이션 (라이브러리 부족시)"""
 
@@ -305,89 +400,105 @@ class GPTService:
         else:
             simulated_content = "This is a simulated GPT response for testing purposes."
 
+        # 시뮬레이션 토큰 사용량
+        simulated_token_usage = {
+            "prompt_tokens": 100,
+            "completion_tokens": 50,
+            "total_tokens": 150,
+        }
+
+        # 시뮬레이션 비용 추적
+        self.cost_tracker.record_api_call(
+            user_id=user_id,
+            purpose=purpose,
+            model=self.model,
+            token_usage=simulated_token_usage,
+            processing_time=1.0,
+        )
+
         return {
             "success": True,
             "content": simulated_content,
-            "token_usage": {
-                "prompt_tokens": 50,
-                "completion_tokens": 30,
-                "total_tokens": 80,
-            },
+            "token_usage": simulated_token_usage,
             "processing_time": 1.0,
-            "model": f"{self.model}-simulated",
+            "model": self.model,
             "finish_reason": "stop",
             "simulated": True,
         }
 
     def _generate_simulated_prompt(self) -> str:
-        """프롬프트 엔지니어링 시뮬레이션 응답"""
-        return "peaceful emotional landscape reflecting gentle contemplation, oil painting style, warm colors, balanced composition, accepting atmosphere"
+        """시뮬레이션 프롬프트 생성"""
+        return "A serene landscape with soft clouds and gentle lighting, representing inner peace and emotional healing."
 
     def _generate_simulated_curator_message(self) -> str:
-        """큐레이터 메시지 시뮬레이션 응답"""
-        return """Thank you for sharing this emotional journey with us. Your courage in exploring these feelings is truly admirable. 
+        """시뮬레이션 큐레이터 메시지 생성"""
+        return """Thank you for sharing your emotional journey with us today.
 
-This experience you've created shows a deep understanding of your inner world. The way you've expressed your emotions through this artistic process demonstrates real growth.
+Your courage in exploring these feelings shows tremendous strength. Through this artwork, you've created something beautiful from your experience.
 
-Continue to honor your feelings with this same gentle honesty. Your journey of self-discovery is valuable and meaningful."""
+This reflection demonstrates your growing ability to transform difficult emotions into meaningful expression.
+
+Continue to trust in your inner wisdom as you move forward on this healing path."""
 
     def _create_prompt_engineering_system_message(
         self, coping_style: str, visual_preferences: Dict[str, Any]
     ) -> str:
         """프롬프트 엔지니어링용 시스템 메시지 생성"""
 
-        base_instruction = """You are an expert AI prompt engineer specializing in therapeutic art generation. Your task is to enhance emotional diary entries into optimized Stable Diffusion prompts for therapeutic image generation.
+        base_instruction = """You are an expert image prompt engineer specializing in therapeutic art creation.
+Your role is to transform emotional diary entries into powerful, healing visual prompts for image generation.
 
-Key Guidelines:
-1. Transform emotional content into visual metaphors
-2. Maintain therapeutic safety and positivity
-3. Keep prompts under 150 characters
-4. Ensure complete sentences
-5. Focus on artistic and healing imagery"""
+Guidelines:
+- Keep prompts under 150 characters
+- Focus on visual metaphors that promote healing
+- Incorporate artistic elements that support emotional processing
+- Ensure the imagery is appropriate for therapeutic contexts
+- Use descriptive, artistic language that evokes emotion and beauty"""
 
-        # 대처 스타일별 조정
+        # 대처 스타일별 지침
         if coping_style == "avoidant":
-            style_guidance = "\n- Use gentle, soft, and non-threatening imagery\n- Prefer abstract and metaphorical representations\n- Avoid direct emotional confrontation"
+            style_guidance = "\nStyle: Create gentle, soft imagery with protective elements. Use metaphors of safety, gradual light, and nurturing environments."
         elif coping_style == "confrontational":
-            style_guidance = "\n- Use direct, clear, and honest imagery\n- Allow for emotional intensity while maintaining hope\n- Emphasize transformation and growth"
+            style_guidance = "\nStyle: Create bold, transformative imagery. Use metaphors of strength, breakthrough moments, and powerful natural forces."
         else:  # balanced
-            style_guidance = "\n- Balance between gentle and direct approaches\n- Use harmonious and integrated imagery\n- Emphasize emotional equilibrium"
+            style_guidance = "\nStyle: Create harmonious imagery that balances challenge and comfort. Use metaphors of growth, balance, and integrated wholeness."
 
         # 시각적 선호도 통합
-        visual_guidance = f"""
-Visual Style Preferences:
-- Art style: {visual_preferences.get('art_style', 'painting')}
-- Color tone: {visual_preferences.get('color_tone', 'warm')}
-- Complexity: {visual_preferences.get('complexity', 'balanced')}"""
+        art_style = visual_preferences.get("art_style", "painting")
+        color_tone = visual_preferences.get("color_tone", "warm")
+        visual_elements = (
+            f"\nPreferred visual elements: {art_style} style, {color_tone} colors"
+        )
 
-        return f"{base_instruction}{style_guidance}{visual_guidance}"
+        return f"{base_instruction}{style_guidance}{visual_elements}"
 
     def _create_prompt_engineering_user_message(
         self, diary_text: str, emotion_keywords: List[str]
     ) -> str:
         """프롬프트 엔지니어링용 사용자 메시지 생성"""
 
-        return f"""Transform this emotional diary entry into an enhanced Stable Diffusion prompt:
+        return f"""Transform this emotional diary entry into a therapeutic image prompt:
 
-Diary Text: "{diary_text}"
+Diary Entry: "{diary_text}"
 
-Identified Emotions: {', '.join(emotion_keywords)}
+Key Emotions: {', '.join(emotion_keywords)}
 
-Please create a therapeutic art prompt that:
-1. Captures the emotional essence
-2. Uses healing visual metaphors
-3. Maintains hope and growth potential
-4. Stays under 150 characters
-5. Forms complete sentences
+Create a visual prompt that:
+1. Captures the emotional essence metaphorically
+2. Promotes healing and reflection
+3. Is suitable for therapeutic art creation
+4. Uses artistic, descriptive language
+5. Stays under 150 characters
 
-Enhanced Prompt:"""
+Visual Prompt:"""
 
     def _create_curator_system_message(
         self, coping_style: str, personalization_context: Dict[str, Any]
     ) -> str:
         """큐레이터 메시지용 시스템 메시지 생성"""
 
-        base_instruction = """You are a wise, empathetic art curator specializing in therapeutic emotional art. You provide personalized, healing messages that acknowledge the user's emotional journey and encourage continued growth.
+        base_instruction = """You are a compassionate art curator and therapeutic guide.
+You provide personalized, healing messages that acknowledge the user's emotional journey and encourage continued growth.
 
 Message Structure:
 1. Acknowledgment of courage/effort
@@ -527,32 +638,164 @@ Curator Message:"""
         self.cache.clear()
         logger.info("GPT 응답 캐시가 초기화되었습니다.")
 
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """캐시 통계 반환"""
-        total_size = len(self.cache)
-        current_time = time.time()
+    def get_usage_statistics(self, user_id: str = None) -> Dict[str, Any]:
+        """사용량 통계 조회"""
+        return self.cost_tracker.get_usage_statistics(user_id)
 
-        expired_count = sum(
-            1
-            for item in self.cache.values()
-            if current_time - item["timestamp"] > self.cache_ttl
-        )
+    def get_cost_summary(self, user_id: str = None) -> Dict[str, Any]:
+        """비용 요약 조회"""
+        return self.cost_tracker.get_cost_summary(user_id)
 
-        return {
-            "total_cached": total_size,
-            "expired_items": expired_count,
-            "valid_items": total_size - expired_count,
-            "cache_ttl_hours": self.cache_ttl / 3600,
+    def _parse_emotion_analysis(self, response_content: str) -> Dict[str, Any]:
+        """감정 분석 응답 파싱"""
+        try:
+            # JSON 블록 찾기
+            import re
+
+            json_match = re.search(r"\{.*\}", response_content, re.DOTALL)
+            if json_match:
+                json_str = json_match.group()
+                parsed_data = json.loads(json_str)
+
+                # 데이터 검증 및 정규화
+                validated_data = {
+                    "keywords": parsed_data.get("keywords", ["중성"])[:5],  # 최대 5개
+                    "vad_scores": self._validate_vad_scores(
+                        parsed_data.get("vad_scores", [0.5, 0.5, 0.5])
+                    ),
+                    "confidence": max(
+                        0.0, min(1.0, float(parsed_data.get("confidence", 0.8)))
+                    ),
+                    "primary_emotion": parsed_data.get("primary_emotion", "중성"),
+                    "emotional_intensity": parsed_data.get(
+                        "emotional_intensity", "medium"
+                    ),
+                }
+
+                return validated_data
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.warning(f"JSON 파싱 실패: {e}")
+
+        # 파싱 실패시 텍스트에서 정보 추출 시도
+        return self._extract_emotion_from_text(response_content)
+
+    def _validate_vad_scores(self, vad_scores) -> List[float]:
+        """VAD 점수 검증 및 정규화"""
+        if not isinstance(vad_scores, (list, tuple)) or len(vad_scores) != 3:
+            return [0.5, 0.5, 0.5]
+
+        try:
+            validated = []
+            for score in vad_scores:
+                # 0-1 범위로 정규화
+                normalized = max(0.0, min(1.0, float(score)))
+                validated.append(normalized)
+            return validated
+        except (ValueError, TypeError):
+            return [0.5, 0.5, 0.5]
+
+    def _extract_emotion_from_text(self, text: str) -> Dict[str, Any]:
+        """텍스트에서 감정 정보 추출 (파싱 실패시 대체)"""
+
+        # 기본 감정 키워드 매핑
+        emotion_mapping = {
+            "happy": ("기쁨", [0.8, 0.6, 0.7]),
+            "sad": ("슬픔", [0.2, 0.4, 0.3]),
+            "angry": ("분노", [0.1, 0.8, 0.6]),
+            "fear": ("두려움", [0.2, 0.7, 0.2]),
+            "surprised": ("놀람", [0.6, 0.8, 0.5]),
+            "calm": ("평온", [0.6, 0.2, 0.6]),
+            "excited": ("흥분", [0.8, 0.9, 0.7]),
+            "anxious": ("불안", [0.3, 0.7, 0.3]),
+            "content": ("만족", [0.7, 0.3, 0.6]),
+            "frustrated": ("좌절", [0.3, 0.6, 0.4]),
         }
 
-    def get_service_status(self) -> Dict[str, Any]:
-        """서비스 상태 반환"""
+        text_lower = text.lower()
+        found_emotions = []
+
+        for eng_emotion, (kor_emotion, vad) in emotion_mapping.items():
+            if eng_emotion in text_lower or kor_emotion in text:
+                found_emotions.append((kor_emotion, vad))
+
+        if found_emotions:
+            primary_emotion, primary_vad = found_emotions[0]
+            keywords = [emotion for emotion, _ in found_emotions[:3]]
+        else:
+            primary_emotion = "중성"
+            primary_vad = [0.5, 0.5, 0.5]
+            keywords = ["중성"]
+
         return {
-            "client_initialized": self.client is not None,
-            "openai_available": OPENAI_AVAILABLE,
-            "model": self.model,
-            "cache_enabled": self.cache_enabled,
-            "cache_stats": self.get_cache_stats(),
-            "cost_tracking": self.cost_tracker.get_daily_summary(),
-            "default_params": self.default_params,
+            "keywords": keywords,
+            "vad_scores": primary_vad,
+            "confidence": 0.6,  # 텍스트 추출은 낮은 신뢰도
+            "primary_emotion": primary_emotion,
+            "emotional_intensity": "medium",
+        }
+
+    def _fallback_emotion_analysis(self, diary_text: str) -> Dict[str, Any]:
+        """감정 분석 실패시 대체 분석"""
+
+        logger.info("GPT 감정 분석 실패, 키워드 기반 대체 분석 사용")
+
+        # 간단한 키워드 기반 분석
+        positive_keywords = [
+            "좋",
+            "행복",
+            "기쁨",
+            "즐거",
+            "만족",
+            "사랑",
+            "평화",
+            "감사",
+        ]
+        negative_keywords = [
+            "슬프",
+            "우울",
+            "화나",
+            "불안",
+            "걱정",
+            "스트레스",
+            "피곤",
+            "힘들",
+        ]
+        neutral_keywords = ["그냥", "보통", "평범", "일상", "생각"]
+
+        text = diary_text.lower()
+
+        # 키워드 카운트
+        positive_count = sum(1 for keyword in positive_keywords if keyword in text)
+        negative_count = sum(1 for keyword in negative_keywords if keyword in text)
+        neutral_count = sum(1 for keyword in neutral_keywords if keyword in text)
+
+        # 감정 결정
+        if positive_count > negative_count and positive_count > neutral_count:
+            primary_emotion = "긍정"
+            keywords = ["기쁨", "만족", "행복"]
+            vad_scores = (0.7, 0.6, 0.6)
+        elif negative_count > positive_count and negative_count > neutral_count:
+            primary_emotion = "부정"
+            keywords = ["슬픔", "걱정", "스트레스"]
+            vad_scores = (0.3, 0.5, 0.4)
+        else:
+            primary_emotion = "중성"
+            keywords = ["중성", "평온"]
+            vad_scores = (0.5, 0.5, 0.5)
+
+        return {
+            "success": True,
+            "keywords": keywords,
+            "vad_scores": vad_scores,
+            "confidence": 0.5,  # 대체 분석은 중간 신뢰도
+            "primary_emotion": primary_emotion,
+            "emotional_intensity": "medium",
+            "token_usage": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            },
+            "processing_time": 0.1,
+            "fallback_used": True,
         }
