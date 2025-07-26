@@ -1,22 +1,52 @@
 # src/__init__.py
 
-from .act_therapy_system import ACTTherapySystem
-from .user_manager import UserManager
-from .prompt_architect import PromptArchitect
-from .image_generator import ImageGenerator
-from .gallery_manager import GalleryManager
-from .personalization_manager import PersonalizationManager
-from .rule_manager import CopingStyleRules
-from .curator_message import CuratorMessageSystem
+# Core 시스템
+from .core.act_therapy_system import ACTTherapySystem
 
-__version__ = "1.0.0"
+# Managers
+from .managers.user_manager import (
+    UserManager,
+    User,
+    PsychometricResult,
+    VisualPreferences,
+)
+from .managers.gallery_manager import GalleryManager, GalleryItem
+
+# Services
+from .services.image_generator import ImageGenerator
+
+# Therapy 모듈들
+from .therapy.prompt_architect import PromptArchitect
+from .therapy.curator_message import CuratorMessageSystem
+from .therapy.rule_manager import CopingStyleRules
+
+# AI 모듈들
+from .ai.personalization_manager import PersonalizationManager
+
+# Training 모듈들
+from .training.lora_trainer import PersonalizedLoRATrainer
+from .training.draft_trainer import DRaFTPlusTrainer
+
+__version__ = "2.0.0"  # GPT 통합 버전
 __all__ = [
+    # Core
     "ACTTherapySystem",
+    # Managers
     "UserManager",
-    "PromptArchitect",
-    "ImageGenerator",
+    "User",
+    "PsychometricResult",
+    "VisualPreferences",
     "GalleryManager",
-    "PersonalizationManager",
-    "CopingStyleRules",
+    "GalleryItem",
+    # Services
+    "ImageGenerator",
+    # Therapy
+    "PromptArchitect",
     "CuratorMessageSystem",
+    "CopingStyleRules",
+    # AI
+    "PersonalizationManager",
+    # Training
+    "PersonalizedLoRATrainer",
+    "DRaFTPlusTrainer",
 ]

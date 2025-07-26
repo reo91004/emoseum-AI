@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 import json
 from datetime import datetime
 
-from src.act_therapy_system import ACTTherapySystem
+from src.core.act_therapy_system import ACTTherapySystem
 
 # 로깅 설정
 logging.basicConfig(
@@ -511,57 +511,6 @@ class EmoseumCLI:
         else:
             print("이 여정은 이미 완료되었습니다.")
             self.current_journey = None
-
-    def _collect_message_reaction(self):
-        """큐레이터 메시지에 대한 사용자 반응 수집"""
-        print("\n=== 메시지 반응 ===")
-        print("이 메시지는 어떠셨나요?")
-        print("1. 👍 좋아요")
-        print("2. 💾 저장하고 싶어요")
-        print("3. 📤 다른 사람과 공유하고 싶어요")
-        print("4. 😐 괜찮아요")
-        print("5. ⏭️ 건너뛰기")
-
-        reaction_choice = input("\n선택하세요 (1-5): ").strip()
-
-        reaction_map = {
-            "1": "like",
-            "2": "save",
-            "3": "share",
-            "4": "dismiss",
-            "5": "skip",
-        }
-
-        reaction_type = reaction_map.get(reaction_choice, "skip")
-
-        # 추가 반응 데이터 수집
-        reaction_data = {}
-
-        if reaction_type in ["like", "save", "share"]:
-            # 긍정적 반응에 대한 추가 정보
-            print("\n어떤 부분이 특히 좋으셨나요? (선택사항)")
-            additional_feedback = input("의견: ").strip()
-            if additional_feedback:
-                reaction_data["feedback"] = additional_feedback
-
-        try:
-            self.therapy_system.record_message_reaction(
-                self.current_user, self.current_journey, reaction_type, reaction_data
-            )
-
-            reaction_messages = {
-                "like": "소중한 반응 감사합니다! 📝",
-                "save": "메시지를 저장해드렸습니다! 💾",
-                "share": "따뜻한 마음을 나누고 싶으시는군요! 📤",
-                "dismiss": "피드백 감사합니다.",
-                "skip": "다음에 또 만나요! 👋",
-            }
-
-            print(f"\n{reaction_messages.get(reaction_type, '감사합니다!')}")
-
-        except Exception as e:
-            logger.error(f"메시지 반응 기록 실패: {e}")
-            print("반응 기록 중 오류가 발생했지만, 여정은 완료되었습니다.")
 
     def _collect_message_reaction(self):
         """큐레이터 메시지에 대한 사용자 반응 수집"""

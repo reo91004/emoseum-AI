@@ -1,4 +1,4 @@
-# training/draft_trainer.py
+# src/training/draft_trainer.py
 
 import torch
 import torch.nn as nn
@@ -23,7 +23,7 @@ except ImportError:
 
 
 class DRaFTRewardModel:
-    """DRaFT+ 보상 모델"""
+    """DRaFT+ 보상 모델 (GPT 기반 강화)"""
 
     def __init__(self, device: torch.device):
         self.device = device
@@ -39,13 +39,55 @@ class DRaFTRewardModel:
             nn.Sigmoid(),
         ).to(device)
 
-        # 보상 계산 가중치
+        # 보상 계산 가중치 (GPT 요소 추가)
         self.reward_weights = {
-            "message_reaction_score": 0.5,  # 큐레이터 메시지 반응 점수
-            "guestbook_sentiment": 0.3,  # 방명록 감정 점수
-            "visual_quality": 0.1,  # 시각적 품질
-            "user_preference": 0.1,  # 사용자 선호도 일치
+            "message_reaction_score": 0.35,  # 큐레이터 메시지 반응 점수
+            "guestbook_sentiment": 0.25,  # 방명록 감정 점수
+            "gpt_quality_score": 0.20,  # GPT 생성 품질 점수
+            "personalization_score": 0.10,  # 개인화 수준
+            "visual_quality": 0.05,  # 시각적 품질
+            "user_preference": 0.05,  # 사용자 선호도 일치
         }
+
+    def calculate_gpt_enhanced_reward(
+        self,
+        image_features: torch.Tensor,
+        message_reaction_score: float,
+        guestbook_sentiment: float,
+        gpt_metadata: Dict[str, Any],
+        user_preferences: Dict[str, float],
+    ) -> torch.Tensor:
+        """GPT 메타데이터를 활용한 종합 보상 계산"""
+
+        # 1. 메시지 반응 기반 보상 (1-5 -> 0-1)
+        message_reward = (message_reaction_score - 1) / 4
+
+        # 2. 방명록 감정 점수 기반 보상 (1-5 -> 0-1)
+        sentiment_reward = (guestbook_sentiment - 1) / 4
+
+        # 3. GPT 품질 점수 보상
+        gpt_quality_reward = self._calculate_gpt_quality_reward(gpt_metadata)
+
+        # 4. 개인화 점수 보상
+        personalization_reward = gpt_metadata.get("personalization_score", 0.0)
+
+        # 5. 시각적 품질 보상 (신경망으로 추정)
+        visual_reward = self.reward_net(image_features).squeeze()
+
+        # 6. 사용자 선호도 일치 보상
+        preference_reward = self._calculate_preference_reward(user_preferences)
+
+        # 가중 평균
+        total_reward = (
+            self.reward_weights["message_reaction_score"] * message_reward
+            + self.reward_weights["guestbook_sentiment"] * sentiment_reward
+            + self.reward_weights["gpt_quality_score"] * gpt_quality_reward
+            + self.reward_weights["personalization_score"] * personalization_reward
+            + self.reward_weights["visual_quality"] * visual_reward
+            + self.reward_weights["user_preference"] * preference_reward
+        )
+
+        return torch.clamp(total_reward, 0.0, 1.0)
 
     def calculate_reward(
         self,
@@ -54,29 +96,46 @@ class DRaFTRewardModel:
         guestbook_sentiment: float,
         user_preferences: Dict[str, float],
     ) -> torch.Tensor:
-        """종합 보상 계산"""
+        """기존 보상 계산 (하위 호환성)"""
 
-        # 1. 메시지 반응 기반 보상 (1-5 -> 0-1)
-        message_reward = (message_reaction_score - 1) / 4
+        # 기본 GPT 메타데이터로 호출
+        default_gpt_metadata = {
+            "prompt_quality_score": 0.5,
+            "curator_quality_score": 0.5,
+            "personalization_score": 0.0,
+        }
 
-        # 2. 방명록 감정 점수 기반 보상 (1-5 -> 0-1)
-        sentiment_reward = (guestbook_sentiment - 1) / 4
-
-        # 3. 시각적 품질 보상 (신경망으로 추정)
-        visual_reward = self.reward_net(image_features).squeeze()
-
-        # 4. 사용자 선호도 일치 보상 (간단한 휴리스틱)
-        preference_reward = self._calculate_preference_reward(user_preferences)
-
-        # 가중 평균
-        total_reward = (
-            self.reward_weights["message_reaction_score"] * message_reward
-            + self.reward_weights["guestbook_sentiment"] * sentiment_reward
-            + self.reward_weights["visual_quality"] * visual_reward
-            + self.reward_weights["user_preference"] * preference_reward
+        return self.calculate_gpt_enhanced_reward(
+            image_features,
+            message_reaction_score,
+            guestbook_sentiment,
+            default_gpt_metadata,
+            user_preferences,
         )
 
-        return torch.clamp(total_reward, 0.0, 1.0)
+    def _calculate_gpt_quality_reward(self, gpt_metadata: Dict[str, Any]) -> float:
+        """GPT 품질 기반 보상 계산"""
+
+        prompt_quality = gpt_metadata.get("prompt_quality_score", 0.5)
+        curator_quality = gpt_metadata.get("curator_quality_score", 0.5)
+
+        # 치료적 품질 고려
+        therapeutic_quality = gpt_metadata.get("therapeutic_quality", "medium")
+        therapeutic_multiplier = {"high": 1.2, "medium": 1.0, "low": 0.8}.get(
+            therapeutic_quality, 1.0
+        )
+
+        # 안전성 수준 고려
+        safety_level = gpt_metadata.get("safety_level", "safe")
+        safety_multiplier = {"safe": 1.0, "warning": 0.8, "critical": 0.3}.get(
+            safety_level, 1.0
+        )
+
+        # 종합 GPT 품질 점수
+        combined_quality = (prompt_quality + curator_quality) / 2
+        final_quality = combined_quality * therapeutic_multiplier * safety_multiplier
+
+        return min(1.0, max(0.0, final_quality))
 
     def _calculate_preference_reward(self, preferences: Dict[str, float]) -> float:
         """사용자 선호도 일치 보상"""
@@ -86,7 +145,7 @@ class DRaFTRewardModel:
 
 
 class DRaFTPlusTrainer:
-    """DRaFT+ 기반 강화학습 트레이너 (Level 3)"""
+    """DRaFT+ 기반 강화학습 트레이너 (Level 3 - GPT 연동)"""
 
     def __init__(
         self,
@@ -148,7 +207,7 @@ class DRaFTPlusTrainer:
 
             self.pipeline = self.pipeline.to(self.device)
 
-            # 보상 모델 초기화
+            # GPT 기반 보상 모델 초기화
             self.reward_model = DRaFTRewardModel(self.device)
 
             logger.info("DRaFT+ 컴포넌트 초기화 완료")
@@ -157,10 +216,10 @@ class DRaFTPlusTrainer:
             logger.error(f"DRaFT+ 컴포넌트 초기화 실패: {e}")
             self.can_train = False
 
-    def prepare_training_data(
+    def prepare_gpt_reaction_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """갤러리 아이템을 DRaFT+ 훈련 데이터로 변환"""
+        """GPT 메시지 반응 기반 훈련 데이터 준비"""
 
         training_data = []
 
@@ -171,6 +230,9 @@ class DRaFTPlusTrainer:
                 and item.get("reflection_image_path")
                 and item.get("curator_message")
             ):
+
+                # GPT 메타데이터 추출
+                gpt_metadata = self._extract_gpt_metadata(item)
 
                 # 방명록 감정 점수 분석
                 guestbook_sentiment = self._analyze_guestbook_sentiment(
@@ -183,7 +245,7 @@ class DRaFTPlusTrainer:
                     message_reactions
                 )
 
-                # 모든 데이터를 사용하되, 반응 점수를 보상으로 활용
+                # GPT 품질 기반 필터링 - DRaFT+는 모든 데이터를 사용하되 보상 차등화
                 training_sample = {
                     "reflection_prompt": item["reflection_prompt"],
                     "curator_message": item["curator_message"],
@@ -196,12 +258,240 @@ class DRaFTPlusTrainer:
                     "vad_scores": item.get("vad_scores", [0, 0, 0]),
                     "user_id": item["user_id"],
                     "coping_style": item.get("coping_style", "balanced"),
+                    # GPT 관련 데이터 추가
+                    "gpt_metadata": gpt_metadata,
+                    "gpt_prompt_used": item.get("gpt_prompt_used", True),
+                    "gpt_curator_used": item.get("gpt_curator_used", True),
+                    "prompt_generation_time": item.get("prompt_generation_time", 0.0),
+                    "curator_generation_method": item.get(
+                        "curator_generation_method", "gpt"
+                    ),
                 }
 
                 training_data.append(training_sample)
 
-        logger.info(f"DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플")
+        logger.info(
+            f"GPT 기반 DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플"
+        )
         return training_data
+
+    def prepare_training_data(
+        self, gallery_items: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """갤러리 아이템을 DRaFT+ 훈련 데이터로 변환 (GPT 연동)"""
+
+        # GPT 반응 데이터 활용 추가
+        return self.prepare_gpt_reaction_training_data(gallery_items)
+
+    def _extract_gpt_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """갤러리 아이템에서 GPT 메타데이터 추출"""
+
+        metadata = {
+            "prompt_quality_score": 0.5,
+            "curator_quality_score": 0.5,
+            "gpt_tokens_used": 0,
+            "gpt_processing_time": 0.0,
+            "personalization_score": 0.0,
+            "safety_level": "safe",
+            "therapeutic_quality": "medium",
+            "curator_engagement_score": 0.5,
+        }
+
+        # GPT 프롬프트 토큰 수 추출
+        if item.get("gpt_prompt_tokens"):
+            metadata["gpt_tokens_used"] += item["gpt_prompt_tokens"]
+
+        # GPT 큐레이터 토큰 수 추출
+        if item.get("gpt_curator_tokens"):
+            metadata["gpt_tokens_used"] += item["gpt_curator_tokens"]
+
+        # 생성 시간 정보
+        if item.get("prompt_generation_time"):
+            metadata["gpt_processing_time"] = item["prompt_generation_time"]
+
+        # 큐레이터 메시지의 개인화 수준 분석
+        curator_message = item.get("curator_message", {})
+        if curator_message and isinstance(curator_message, dict):
+            personalization_data = curator_message.get("personalization_data", {})
+            if personalization_data:
+                # 개인화 요소 수에 따른 점수 계산
+                elements = personalization_data.get("personalized_elements", {})
+                if elements:
+                    metadata["personalization_score"] = min(1.0, len(elements) * 0.2)
+
+                # 대처 스타일 맞춤화 여부
+                if personalization_data.get("coping_style"):
+                    metadata["personalization_score"] += 0.2
+
+            # 큐레이터 메시지 참여도 점수 계산
+            metadata["curator_engagement_score"] = (
+                self._calculate_curator_engagement_score(curator_message)
+            )
+
+        # 프롬프트 품질 점수 추정
+        prompt = item.get("reflection_prompt", "")
+        if prompt:
+            metadata["prompt_quality_score"] = self._estimate_prompt_quality(prompt)
+
+        # 큐레이터 메시지 품질 점수 추정
+        if curator_message:
+            metadata["curator_quality_score"] = self._estimate_curator_quality(
+                curator_message
+            )
+
+        # 치료적 품질 추정 (메시지 반응 기반)
+        message_reactions = item.get("message_reactions", [])
+        metadata["therapeutic_quality"] = self._estimate_therapeutic_quality(
+            message_reactions
+        )
+
+        return metadata
+
+    def _estimate_prompt_quality(self, prompt: str) -> float:
+        """프롬프트 품질 추정"""
+        quality_score = 0.3  # 기본 점수
+
+        word_count = len(prompt.split())
+        if 10 <= word_count <= 50:  # 적절한 길이
+            quality_score += 0.2
+
+        # 스타일 지시어 포함 여부
+        if any(
+            style in prompt.lower() for style in ["style", "tone", "mood", "atmosphere"]
+        ):
+            quality_score += 0.2
+
+        # 감정 키워드 포함 여부
+        if any(
+            emotion in prompt.lower()
+            for emotion in ["calm", "peaceful", "gentle", "vibrant", "intense"]
+        ):
+            quality_score += 0.2
+
+        # 시각적 요소 포함 여부
+        if any(
+            visual in prompt.lower()
+            for visual in ["color", "light", "composition", "texture"]
+        ):
+            quality_score += 0.1
+
+        return min(1.0, quality_score)
+
+    def _estimate_curator_quality(self, curator_message: Dict[str, Any]) -> float:
+        """큐레이터 메시지 품질 추정"""
+        quality_score = 0.2  # 기본 점수
+
+        content = curator_message.get("content", {})
+        if content:
+            sections = [v for v in content.values() if isinstance(v, str) and v.strip()]
+            if len(sections) >= 3:  # 충분한 섹션 수
+                quality_score += 0.3
+
+            # 개인화 언급 여부
+            combined_text = " ".join(sections).lower()
+            if any(
+                word in combined_text for word in ["당신의", "당신이", "용기", "성장"]
+            ):
+                quality_score += 0.3
+
+            # 감정적 지원 요소
+            if any(word in combined_text for word in ["함께", "응원", "지지", "이해"]):
+                quality_score += 0.2
+
+        return min(1.0, quality_score)
+
+    def _calculate_curator_engagement_score(
+        self, curator_message: Dict[str, Any]
+    ) -> float:
+        """큐레이터 메시지 참여도 점수 계산"""
+
+        base_score = 0.3
+
+        # 메시지 구조 복잡성
+        content = curator_message.get("content", {})
+        if content:
+            sections_count = len(
+                [v for v in content.values() if isinstance(v, str) and v.strip()]
+            )
+            base_score += min(0.3, sections_count * 0.1)
+
+        # 개인화 데이터 존재 여부
+        personalization_data = curator_message.get("personalization_data", {})
+        if personalization_data:
+            base_score += 0.2
+
+            # 개인화 요소 다양성
+            elements = personalization_data.get("personalized_elements", {})
+            if elements:
+                base_score += min(0.2, len(elements) * 0.05)
+
+        return min(1.0, base_score)
+
+    def _estimate_therapeutic_quality(self, message_reactions: List[str]) -> str:
+        """메시지 반응 기반 치료적 품질 추정"""
+
+        if not message_reactions:
+            return "medium"
+
+        positive_reactions = sum(
+            1 for reaction in message_reactions if reaction in ["like", "save", "share"]
+        )
+        total_reactions = len(message_reactions)
+
+        if total_reactions == 0:
+            return "medium"
+
+        positive_ratio = positive_reactions / total_reactions
+
+        if positive_ratio >= 0.8:
+            return "high"
+        elif positive_ratio >= 0.5:
+            return "medium"
+        else:
+            return "low"
+
+    def calculate_gpt_message_reward(
+        self, curator_message: Dict[str, Any], user_reactions: List[str]
+    ) -> float:
+        """GPT 큐레이터 메시지 기반 보상 계산"""
+
+        base_reward = 0.5
+
+        # 사용자 반응 기반 보상
+        if user_reactions:
+            positive_reactions = sum(
+                1
+                for reaction in user_reactions
+                if reaction in ["like", "save", "share"]
+            )
+            total_reactions = len(user_reactions)
+
+            if total_reactions > 0:
+                positive_ratio = positive_reactions / total_reactions
+                reaction_bonus = positive_ratio * 0.4
+                base_reward += reaction_bonus
+
+        # 메시지 품질 기반 보상
+        content = curator_message.get("content", {})
+        if content:
+            # 메시지 완성도
+            sections = [v for v in content.values() if isinstance(v, str) and v.strip()]
+            completeness_bonus = min(0.2, len(sections) * 0.04)
+            base_reward += completeness_bonus
+
+        # 개인화 수준 기반 보상
+        personalization_data = curator_message.get("personalization_data", {})
+        if personalization_data:
+            personalization_bonus = 0.1
+
+            # 개인화 요소 다양성 보너스
+            elements = personalization_data.get("personalized_elements", {})
+            if elements:
+                personalization_bonus += min(0.1, len(elements) * 0.02)
+
+            base_reward += personalization_bonus
+
+        return min(1.0, max(0.0, base_reward))
 
     def _analyze_guestbook_sentiment(self, title: str, tags: List[str]) -> float:
         """방명록 제목과 태그의 감정 점수 분석"""
@@ -300,7 +590,7 @@ class DRaFTPlusTrainer:
     def train_user_draft(
         self, user_id: str, training_data: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
-        """사용자별 DRaFT+ 모델 훈련"""
+        """사용자별 DRaFT+ 모델 훈련 (GPT 데이터 활용)"""
 
         if not self.can_train:
             return self._simulate_draft_training(user_id, len(training_data))
@@ -318,6 +608,9 @@ class DRaFTPlusTrainer:
             }
 
         try:
+            # GPT 품질 분석
+            gpt_analysis = self._analyze_gpt_data_quality(training_data)
+
             # UNet을 훈련 모드로 설정
             self.pipeline.unet.train()
 
@@ -334,12 +627,16 @@ class DRaFTPlusTrainer:
                 optimizer, T_max=self.training_config["num_epochs"] * len(training_data)
             )
 
-            # 훈련 메트릭
+            # 훈련 메트릭 (GPT 관련 메트릭 추가)
             training_metrics = {
                 "policy_losses": [],
                 "rewards": [],
                 "guestbook_sentiments": [],
                 "message_reaction_scores": [],
+                "gpt_quality_scores": [],
+                "personalization_scores": [],
+                "curator_engagement_scores": [],
+                "therapeutic_quality_scores": [],
                 "kl_divergences": [],
             }
 
@@ -354,7 +651,7 @@ class DRaFTPlusTrainer:
                 random.shuffle(shuffled_data)
 
                 for step, sample in enumerate(shuffled_data):
-                    loss, reward = self._draft_training_step(sample)
+                    loss, reward = self._gpt_enhanced_draft_training_step(sample)
 
                     # 그래디언트 누적
                     loss = loss / self.training_config["gradient_accumulation_steps"]
@@ -373,7 +670,7 @@ class DRaFTPlusTrainer:
                         scheduler.step()
                         optimizer.zero_grad()
 
-                        # 메트릭 기록
+                        # 메트릭 기록 (GPT 관련 메트릭 포함)
                         training_metrics["policy_losses"].append(loss.item())
                         training_metrics["rewards"].append(reward)
                         training_metrics["guestbook_sentiments"].append(
@@ -383,13 +680,42 @@ class DRaFTPlusTrainer:
                             sample["message_reaction_score"]
                         )
 
+                        # GPT 메타데이터 메트릭
+                        gpt_metadata = sample.get("gpt_metadata", {})
+
+                        training_metrics["gpt_quality_scores"].append(
+                            (
+                                gpt_metadata.get("prompt_quality_score", 0.5)
+                                + gpt_metadata.get("curator_quality_score", 0.5)
+                            )
+                            / 2
+                        )
+                        training_metrics["personalization_scores"].append(
+                            gpt_metadata.get("personalization_score", 0.0)
+                        )
+                        training_metrics["curator_engagement_scores"].append(
+                            gpt_metadata.get("curator_engagement_score", 0.5)
+                        )
+
+                        # 치료적 품질을 점수로 변환
+                        therapeutic_quality = gpt_metadata.get(
+                            "therapeutic_quality", "medium"
+                        )
+                        quality_score = {"high": 1.0, "medium": 0.6, "low": 0.2}.get(
+                            therapeutic_quality, 0.6
+                        )
+                        training_metrics["therapeutic_quality_scores"].append(
+                            quality_score
+                        )
+
                         total_steps += 1
 
                         if total_steps % self.training_config["save_steps"] == 0:
                             logger.info(
                                 f"Step {total_steps}: Loss = {loss.item():.4f}, "
                                 f"Reward = {reward:.4f}, "
-                                f"Message Score = {sample['message_reaction_score']:.2f}"
+                                f"Message Score = {sample['message_reaction_score']:.2f}, "
+                                f"GPT Quality = {training_metrics['gpt_quality_scores'][-1]:.2f}"
                             )
 
                     epoch_loss += loss.item()
@@ -407,7 +733,7 @@ class DRaFTPlusTrainer:
             save_path = self.save_dir / f"{user_id}_draft"
             self.pipeline.save_pretrained(save_path)
 
-            # 메타데이터 저장
+            # 메타데이터 저장 (GPT 관련 정보 포함)
             metadata = {
                 "user_id": user_id,
                 "training_date": datetime.now().isoformat(),
@@ -434,7 +760,38 @@ class DRaFTPlusTrainer:
                     if training_metrics["message_reaction_scores"]
                     else 0
                 ),
+                "avg_gpt_quality_score": (
+                    np.mean(training_metrics["gpt_quality_scores"])
+                    if training_metrics["gpt_quality_scores"]
+                    else 0
+                ),
+                "avg_personalization_score": (
+                    np.mean(training_metrics["personalization_scores"])
+                    if training_metrics["personalization_scores"]
+                    else 0
+                ),
+                "avg_curator_engagement_score": (
+                    np.mean(training_metrics["curator_engagement_scores"])
+                    if training_metrics["curator_engagement_scores"]
+                    else 0
+                ),
+                "avg_therapeutic_quality_score": (
+                    np.mean(training_metrics["therapeutic_quality_scores"])
+                    if training_metrics["therapeutic_quality_scores"]
+                    else 0
+                ),
+                "gpt_data_analysis": gpt_analysis,
                 "training_config": self.training_config,
+                "gpt_integration": {
+                    "gpt_enhanced_training": True,
+                    "reward_weights": self.reward_model.reward_weights,
+                    "gpt_quality_correlation": gpt_analysis.get(
+                        "quality_correlation", 0.0
+                    ),
+                    "personalization_impact": gpt_analysis.get(
+                        "personalization_impact", 0.0
+                    ),
+                },
             }
 
             metadata_path = self.save_dir / f"{user_id}_draft_metadata.json"
@@ -453,16 +810,142 @@ class DRaFTPlusTrainer:
                     "avg_message_reaction_score": metadata[
                         "avg_message_reaction_score"
                     ],
+                    "avg_gpt_quality_score": metadata["avg_gpt_quality_score"],
+                    "avg_personalization_score": metadata["avg_personalization_score"],
                     "total_steps": total_steps,
                 },
             }
 
-            logger.info(f"사용자 {user_id}의 DRaFT+ 모델 훈련 완료: {save_path}")
+            logger.info(
+                f"사용자 {user_id}의 GPT 기반 DRaFT+ 모델 훈련 완료: {save_path}"
+            )
             return result
 
         except Exception as e:
             logger.error(f"DRaFT+ 훈련 실패: {e}")
             return {"success": False, "error": str(e), "user_id": user_id}
+
+    def _analyze_gpt_data_quality(
+        self, training_data: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """GPT 데이터 품질 분석"""
+
+        if not training_data:
+            return {"quality_correlation": 0.0, "personalization_impact": 0.0}
+
+        # 품질 점수와 사용자 반응 수집
+        quality_scores = []
+        reaction_scores = []
+        personalization_scores = []
+
+        for sample in training_data:
+            gpt_metadata = sample.get("gpt_metadata", {})
+
+            # 종합 품질 점수
+            prompt_quality = gpt_metadata.get("prompt_quality_score", 0.5)
+            curator_quality = gpt_metadata.get("curator_quality_score", 0.5)
+            combined_quality = (prompt_quality + curator_quality) / 2
+            quality_scores.append(combined_quality)
+
+            # 사용자 반응 점수
+            reaction_scores.append(sample.get("message_reaction_score", 3.0))
+
+            # 개인화 점수
+            personalization_scores.append(
+                gpt_metadata.get("personalization_score", 0.0)
+            )
+
+        # 상관관계 분석
+        quality_correlation = 0.0
+        personalization_impact = 0.0
+
+        if len(quality_scores) > 1:
+            # 품질-반응 상관관계
+            correlation_matrix = np.corrcoef(quality_scores, reaction_scores)
+            quality_correlation = (
+                correlation_matrix[0, 1]
+                if not np.isnan(correlation_matrix[0, 1])
+                else 0.0
+            )
+
+            # 개인화 영향도
+            high_personalization = [
+                r for p, r in zip(personalization_scores, reaction_scores) if p >= 0.5
+            ]
+            low_personalization = [
+                r for p, r in zip(personalization_scores, reaction_scores) if p < 0.3
+            ]
+
+            if high_personalization and low_personalization:
+                personalization_impact = np.mean(high_personalization) - np.mean(
+                    low_personalization
+                )
+
+        return {
+            "sample_size": len(training_data),
+            "avg_quality_score": (
+                float(np.mean(quality_scores)) if quality_scores else 0.0
+            ),
+            "avg_reaction_score": (
+                float(np.mean(reaction_scores)) if reaction_scores else 0.0
+            ),
+            "avg_personalization_score": (
+                float(np.mean(personalization_scores))
+                if personalization_scores
+                else 0.0
+            ),
+            "quality_correlation": float(quality_correlation),
+            "personalization_impact": float(personalization_impact),
+            "high_quality_samples": sum(1 for q in quality_scores if q >= 0.7),
+            "high_personalization_samples": sum(
+                1 for p in personalization_scores if p >= 0.5
+            ),
+        }
+
+    def _gpt_enhanced_draft_training_step(
+        self, sample: Dict[str, Any]
+    ) -> Tuple[torch.Tensor, float]:
+        """GPT 메타데이터를 활용한 DRaFT+ 훈련 스텝"""
+
+        # 기본 훈련 스텝
+        loss, reward = self._draft_training_step(sample)
+
+        # GPT 메타데이터 기반 손실 조정
+        gpt_metadata = sample.get("gpt_metadata", {})
+
+        # 품질 기반 학습률 조정
+        combined_quality = (
+            gpt_metadata.get("prompt_quality_score", 0.5)
+            + gpt_metadata.get("curator_quality_score", 0.5)
+        ) / 2
+
+        # 개인화 수준 기반 조정
+        personalization_score = gpt_metadata.get("personalization_score", 0.0)
+
+        # 치료적 품질 기반 조정
+        therapeutic_quality = gpt_metadata.get("therapeutic_quality", "medium")
+        therapeutic_multiplier = {"high": 1.2, "medium": 1.0, "low": 0.8}.get(
+            therapeutic_quality, 1.0
+        )
+
+        # 종합 조정 계수
+        quality_multiplier = 0.7 + (combined_quality * 0.6)  # 0.7 ~ 1.3 범위
+        personalization_multiplier = 1.0 + (
+            personalization_score * 0.3
+        )  # 1.0 ~ 1.3 범위
+
+        # 최종 손실 조정
+        adjusted_loss = (
+            loss
+            * quality_multiplier
+            * personalization_multiplier
+            * therapeutic_multiplier
+        )
+
+        # 보상도 조정
+        adjusted_reward = reward * therapeutic_multiplier
+
+        return adjusted_loss, adjusted_reward
 
     def _draft_training_step(
         self, sample: Dict[str, Any]
@@ -511,7 +994,7 @@ class DRaFTPlusTrainer:
         # 기본 MSE 손실
         mse_loss = nn.functional.mse_loss(noise_pred, noise, reduction="mean")
 
-        # 보상 계산 (간단한 특성 추출)
+        # GPT 기반 보상 계산
         with torch.no_grad():
             # 이미지 특성을 간단히 노이즈 예측에서 추출
             image_features = noise_pred.flatten().unsqueeze(0)
@@ -526,10 +1009,14 @@ class DRaFTPlusTrainer:
             # 사용자 선호도 (간단한 더미 데이터)
             user_preferences = {"overall": 0.5}
 
-            reward = self.reward_model.calculate_reward(
+            # GPT 메타데이터 활용
+            gpt_metadata = sample.get("gpt_metadata", {})
+
+            reward = self.reward_model.calculate_gpt_enhanced_reward(
                 image_features=image_features,
                 message_reaction_score=sample["message_reaction_score"],
                 guestbook_sentiment=sample["guestbook_sentiment"],
+                gpt_metadata=gpt_metadata,
                 user_preferences=user_preferences,
             ).item()
 
@@ -545,7 +1032,7 @@ class DRaFTPlusTrainer:
     def _simulate_draft_training(self, user_id: str, data_size: int) -> Dict[str, Any]:
         """DRaFT+ 훈련 시뮬레이션"""
 
-        logger.info(f"사용자 {user_id}의 DRaFT+ 훈련을 시뮬레이션합니다...")
+        logger.info(f"사용자 {user_id}의 GPT 기반 DRaFT+ 훈련을 시뮬레이션합니다...")
 
         import time
 
@@ -556,6 +1043,10 @@ class DRaFTPlusTrainer:
         simulated_reward = random.uniform(0.6, 0.8)
         simulated_guestbook_sentiment = random.uniform(3.2, 4.5)
         simulated_message_score = random.uniform(3.5, 4.8)
+        simulated_gpt_quality = random.uniform(0.6, 0.8)
+        simulated_personalization = random.uniform(0.4, 0.7)
+        simulated_curator_engagement = random.uniform(0.5, 0.8)
+        simulated_therapeutic_quality = random.uniform(0.6, 0.9)
 
         # 시뮬레이션 정보 저장
         save_path = self.save_dir / f"{user_id}_draft_simulated"
@@ -570,6 +1061,16 @@ class DRaFTPlusTrainer:
             "simulated_avg_reward": simulated_reward,
             "simulated_avg_guestbook_sentiment": simulated_guestbook_sentiment,
             "simulated_avg_message_reaction_score": simulated_message_score,
+            "simulated_avg_gpt_quality_score": simulated_gpt_quality,
+            "simulated_avg_personalization_score": simulated_personalization,
+            "simulated_avg_curator_engagement_score": simulated_curator_engagement,
+            "simulated_avg_therapeutic_quality_score": simulated_therapeutic_quality,
+            "gpt_integration": {
+                "gpt_enhanced_training": True,
+                "simulation_mode": True,
+                "quality_correlation": random.uniform(0.4, 0.7),
+                "personalization_impact": random.uniform(0.2, 0.5),
+            },
             "note": "실제 라이브러리가 없어 시뮬레이션으로 실행됨",
         }
 
@@ -588,6 +1089,8 @@ class DRaFTPlusTrainer:
                 "avg_reward": simulated_reward,
                 "avg_guestbook_sentiment": simulated_guestbook_sentiment,
                 "avg_message_reaction_score": simulated_message_score,
+                "avg_gpt_quality_score": simulated_gpt_quality,
+                "avg_personalization_score": simulated_personalization,
                 "total_steps": data_size * 5,
             },
         }
@@ -682,6 +1185,20 @@ class DRaFTPlusTrainer:
                 with open(metadata_path, "r") as f:
                     metadata = json.load(f)
                 info["metadata"] = metadata
+
+                # GPT 관련 정보 추출
+                gpt_integration = metadata.get("gpt_integration", {})
+                if gpt_integration:
+                    info["gpt_enhanced"] = gpt_integration.get(
+                        "gpt_enhanced_training", False
+                    )
+                    info["quality_correlation"] = gpt_integration.get(
+                        "quality_correlation", 0.0
+                    )
+                    info["personalization_impact"] = gpt_integration.get(
+                        "personalization_impact", 0.0
+                    )
+
             except Exception as e:
                 logger.warning(f"DRaFT+ 메타데이터 로드 실패: {e}")
 
