@@ -77,49 +77,6 @@ Message Structure:
 Tone: Wise, balanced, thoughtful, respectful, encouraging""",
         }
 
-        # 메시지 구성 요소 템플릿
-        self.message_components = {
-            "opening": {
-                "avoidant": [
-                    "Your gentle courage in sharing this moment touches my heart.",
-                    "I feel honored to witness this tender part of your journey.",
-                    "What a beautiful act of quiet bravery you've shown today.",
-                    "Your willingness to explore these feelings is truly precious.",
-                ],
-                "confrontational": [
-                    "Your bold honesty in facing these emotions is remarkable.",
-                    "I deeply respect the courage it took to confront this experience.",
-                    "Your authentic expression of these feelings is powerful.",
-                    "The strength you've shown in this emotional exploration is inspiring.",
-                ],
-                "balanced": [
-                    "Your thoughtful approach to exploring these emotions is admirable.",
-                    "I appreciate the wisdom and courage you've brought to this reflection.",
-                    "Your balanced perspective on this experience shows real growth.",
-                    "The mature way you've engaged with these feelings is meaningful.",
-                ],
-            },
-            "recognition": {
-                "avoidant": [
-                    "Through your gentle exploration, you're slowly building a bridge to understanding.",
-                    "Each small step you take in acknowledging these feelings is significant.",
-                    "Your patient approach to self-discovery is creating space for healing.",
-                    "The care you're showing yourself in this process is beautiful.",
-                ],
-                "confrontational": [
-                    "Your direct engagement with difficult emotions demonstrates real emotional intelligence.",
-                    "The way you've faced these challenges head-on shows tremendous growth.",
-                    "Your commitment to emotional honesty is transforming your understanding.",
-                    "The courage you've displayed in this process is genuinely impressive.",
-                ],
-                "balanced": [
-                    "Your thoughtful balance of courage and compassion is creating meaningful progress.",
-                    "The way you've approached this complexity shows real emotional maturity.",
-                    "Your ability to hold both difficulty and hope demonstrates wisdom.",
-                    "The nuanced understanding you're developing is truly valuable.",
-                ],
-            },
-        }
 
     def generate_personalized_message(
         self,
@@ -135,16 +92,12 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
                 user_profile, gallery_item, personalization_context
             )
 
-            # 2. 시스템 메시지 구성
-            system_message = self._build_curator_system_message(context)
-
-            # 3. 사용자 메시지 구성
-            user_message = self._build_curator_user_message(context)
-
-            # 4. GPT API 호출
+            # 2. GPT API 호출 (GPTService에서 메시지 구성)
             gpt_response = self.gpt_service.generate_curator_message(
-                system_message=system_message,
-                user_message=user_message,
+                user_profile=context,
+                gallery_item=context,
+                personalization_context=context,
+                user_id=user_profile.user_id,
                 max_tokens=300,
                 temperature=0.8,
             )
@@ -155,13 +108,13 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
                 )
                 return self._create_fallback_message(context)
 
-            # 5. 생성된 메시지 구조화
-            raw_message = gpt_response["content"]
-            structured_message = self.structure_message_content(raw_message)
+            # 5. 생성된 메시지 구조화 (GPTService에서 이미 구조화됨)
+            structured_message = gpt_response.get("message", {})
+            raw_content = gpt_response.get("raw_content", "")
 
-            # 6. 안전성 검증
+            # 6. 안전성 검증 (원본 텍스트 사용)
             safety_check = self.safety_validator.validate_gpt_response(
-                response=raw_message, context=context
+                response=raw_content, context=context
             )
 
             if not safety_check.get("is_safe", False):
@@ -188,9 +141,9 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
                 },
                 "metadata": {
                     "gpt_model": gpt_response.get("model", "unknown"),
-                    "gpt_tokens": gpt_response.get("usage", {}),
+                    "gpt_tokens": gpt_response.get("token_usage", {}),
                     "safety_validated": True,
-                    "generation_time": gpt_response.get("generation_time", 0),
+                    "generation_time": gpt_response.get("processing_time", 0),
                     "fallback_used": False,
                 },
                 "created_date": datetime.now().isoformat(),
@@ -198,7 +151,7 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
 
             logger.info(
                 f"큐레이터 메시지 생성 완료: 사용자={user_profile.user_id}, "
-                f"스타일={context['coping_style']}, 토큰={gpt_response.get('usage', {}).get('total_tokens', 0)}"
+                f"스타일={context['coping_style']}, 토큰={gpt_response.get('token_usage', {}).get('total_tokens', 0)}"
             )
 
             return final_message
@@ -558,45 +511,16 @@ Generate the curator message now:"""
         return sections
 
     def _create_fallback_message(self, context: Dict[str, Any]) -> Dict[str, Any]:
-        """GPT 실패 시 폴백 메시지 생성"""
+        """GPT 실패 시 기본 메시지 생성"""
 
-        coping_style = context.get("coping_style", "balanced")
-        guestbook_title = context.get("guestbook_data", {}).get("title", "")
-        emotion_keywords = context.get("emotion_keywords", [])
-
-        # 대처 스타일별 폴백 메시지
-        fallback_messages = {
-            "avoidant": {
-                "opening": "Your gentle courage in exploring these feelings is truly precious.",
-                "recognition": "Each step you take in understanding yourself creates space for healing.",
-                "personal_note": f"The way you've titled this '{guestbook_title}' shows your thoughtful perspective.",
-                "guidance": "Continue to be patient and kind with yourself on this journey.",
-                "closing": "I'm here whenever you're ready to explore further.",
-            },
-            "confrontational": {
-                "opening": "Your honest engagement with these emotions demonstrates real strength.",
-                "recognition": "The courage you've shown in facing these feelings is remarkable.",
-                "personal_note": f"Naming this experience '{guestbook_title}' reflects your authentic voice.",
-                "guidance": "Keep channeling this strength into continued emotional growth.",
-                "closing": "I respect your bold approach to self-discovery.",
-            },
-            "balanced": {
-                "opening": "Your thoughtful exploration of these emotions shows real wisdom.",
-                "recognition": "The balanced way you've approached this experience is meaningful.",
-                "personal_note": f"Your choice to call this '{guestbook_title}' demonstrates insight.",
-                "guidance": "Continue to blend courage and compassion in your emotional journey.",
-                "closing": "I'm honored to support you on this path of understanding.",
-            },
+        # 단순한 기본 메시지
+        content = {
+            "opening": "Thank you for sharing your emotional journey with me.",
+            "recognition": "Your courage in exploring these feelings is meaningful.",
+            "personal_note": "Every step in emotional understanding is valuable.",
+            "guidance": "Continue to be patient and compassionate with yourself.",
+            "closing": "I'm here to support you on this path of growth.",
         }
-
-        content = fallback_messages.get(coping_style, fallback_messages["balanced"])
-
-        # 감정 키워드가 있으면 personal_note에 포함
-        if emotion_keywords:
-            emotions_text = ", ".join(emotion_keywords)
-            content[
-                "personal_note"
-            ] += f" Your exploration of {emotions_text} shows deep self-awareness."
 
         return {
             "message_id": f"curator_fallback_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
@@ -605,10 +529,10 @@ Generate the curator message now:"""
             "message_type": "curator_closure",
             "content": content,
             "personalization_data": {
-                "coping_style": coping_style,
-                "emotion_keywords": emotion_keywords,
+                "coping_style": context.get("coping_style", "balanced"),
+                "emotion_keywords": context.get("emotion_keywords", []),
                 "guestbook_data": context.get("guestbook_data", {}),
-                "personalization_level": context.get("personalization_level", "low"),
+                "personalization_level": "low",
                 "generation_method": "fallback",
             },
             "metadata": {

@@ -1,5 +1,6 @@
 # src/ai/__init__.py
 
-from .personalization_manager import PersonalizationManager
+from .prompt_engineer import PromptEngineer
+from .curator_gpt import CuratorGPT
 
-__all__ = ["PersonalizationManager"]
+__all__ = ["PromptEngineer", "CuratorGPT"]

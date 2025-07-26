@@ -227,7 +227,7 @@ Response format (JSON):
 DIARY TEXT: "{diary_text}"
 
 Please provide a comprehensive emotional analysis including:
-1. 3-5 key emotional keywords in Korean
+1. 3-5 key emotional keywords in English
 2. VAD scores (Valence: positive/negative, Arousal: calm/excited, Dominance: controlled/overwhelmed)
 3. Your confidence in this analysis
 4. The primary emotion
@@ -256,12 +256,12 @@ Provide the analysis in the specified JSON format."""
 
                 return {
                     "success": True,
-                    "keywords": analysis_data.get("keywords", ["중성"]),
+                    "keywords": analysis_data.get("keywords", ["neutral"]),
                     "vad_scores": tuple(
                         analysis_data.get("vad_scores", [0.5, 0.5, 0.5])
                     ),
                     "confidence": analysis_data.get("confidence", 0.8),
-                    "primary_emotion": analysis_data.get("primary_emotion", "중성"),
+                    "primary_emotion": analysis_data.get("primary_emotion", "neutral"),
                     "emotional_intensity": analysis_data.get(
                         "emotional_intensity", "medium"
                     ),
@@ -269,13 +269,19 @@ Provide the analysis in the specified JSON format."""
                     "processing_time": response["processing_time"],
                 }
             except Exception as e:
-                logger.warning(f"감정 분석 결과 파싱 실패: {e}, 대체 분석 사용")
-                return self._fallback_emotion_analysis(diary_text)
+                logger.error(f"감정 분석 결과 파싱 실패: {e}")
+                return {
+                    "success": False,
+                    "error": f"emotion_analysis_parsing_failed: {str(e)}",
+                    "keywords": ["neutral"],
+                    "vad_scores": (0.5, 0.5, 0.5),
+                    "confidence": 0.0,
+                }
 
         return {
             "success": False,
             "error": response.get("error", "감정 분석 실패"),
-            "keywords": ["중성"],
+            "keywords": ["neutral"],
             "vad_scores": (0.5, 0.5, 0.5),
             "confidence": 0.0,
         }
@@ -397,6 +403,8 @@ Provide the analysis in the specified JSON format."""
             simulated_content = self._generate_simulated_prompt()
         elif purpose == "curator_message":
             simulated_content = self._generate_simulated_curator_message()
+        elif purpose == "emotion_analysis":
+            simulated_content = self._generate_simulated_emotion_analysis()
         else:
             simulated_content = "This is a simulated GPT response for testing purposes."
 
@@ -439,6 +447,16 @@ Your courage in exploring these feelings shows tremendous strength. Through this
 This reflection demonstrates your growing ability to transform difficult emotions into meaningful expression.
 
 Continue to trust in your inner wisdom as you move forward on this healing path."""
+
+    def _generate_simulated_emotion_analysis(self) -> str:
+        """시뮬레이션 감정 분석 JSON 생성"""
+        return """{
+    "keywords": ["contentment", "satisfaction", "joy"],
+    "vad_scores": [0.7, 0.5, 0.6],
+    "confidence": 0.85,
+    "primary_emotion": "contentment",
+    "emotional_intensity": "medium"
+}"""
 
     def _create_prompt_engineering_system_message(
         self, coping_style: str, visual_preferences: Dict[str, Any]
@@ -659,14 +677,14 @@ Curator Message:"""
 
                 # 데이터 검증 및 정규화
                 validated_data = {
-                    "keywords": parsed_data.get("keywords", ["중성"])[:5],  # 최대 5개
+                    "keywords": parsed_data.get("keywords", ["neutral"])[:5],  # 최대 5개
                     "vad_scores": self._validate_vad_scores(
                         parsed_data.get("vad_scores", [0.5, 0.5, 0.5])
                     ),
                     "confidence": max(
                         0.0, min(1.0, float(parsed_data.get("confidence", 0.8)))
                     ),
-                    "primary_emotion": parsed_data.get("primary_emotion", "중성"),
+                    "primary_emotion": parsed_data.get("primary_emotion", "neutral"),
                     "emotional_intensity": parsed_data.get(
                         "emotional_intensity", "medium"
                     ),
@@ -677,8 +695,15 @@ Curator Message:"""
         except (json.JSONDecodeError, ValueError, KeyError) as e:
             logger.warning(f"JSON 파싱 실패: {e}")
 
-        # 파싱 실패시 텍스트에서 정보 추출 시도
-        return self._extract_emotion_from_text(response_content)
+        # 파싱 실패시 기본값 반환
+        logger.warning("JSON 파싱 실패, 기본값 반환")
+        return {
+            "keywords": ["neutral"],
+            "vad_scores": [0.5, 0.5, 0.5],
+            "confidence": 0.1,
+            "primary_emotion": "neutral",
+            "emotional_intensity": "medium",
+        }
 
     def _validate_vad_scores(self, vad_scores) -> List[float]:
         """VAD 점수 검증 및 정규화"""
@@ -695,107 +720,3 @@ Curator Message:"""
         except (ValueError, TypeError):
             return [0.5, 0.5, 0.5]
 
-    def _extract_emotion_from_text(self, text: str) -> Dict[str, Any]:
-        """텍스트에서 감정 정보 추출 (파싱 실패시 대체)"""
-
-        # 기본 감정 키워드 매핑
-        emotion_mapping = {
-            "happy": ("기쁨", [0.8, 0.6, 0.7]),
-            "sad": ("슬픔", [0.2, 0.4, 0.3]),
-            "angry": ("분노", [0.1, 0.8, 0.6]),
-            "fear": ("두려움", [0.2, 0.7, 0.2]),
-            "surprised": ("놀람", [0.6, 0.8, 0.5]),
-            "calm": ("평온", [0.6, 0.2, 0.6]),
-            "excited": ("흥분", [0.8, 0.9, 0.7]),
-            "anxious": ("불안", [0.3, 0.7, 0.3]),
-            "content": ("만족", [0.7, 0.3, 0.6]),
-            "frustrated": ("좌절", [0.3, 0.6, 0.4]),
-        }
-
-        text_lower = text.lower()
-        found_emotions = []
-
-        for eng_emotion, (kor_emotion, vad) in emotion_mapping.items():
-            if eng_emotion in text_lower or kor_emotion in text:
-                found_emotions.append((kor_emotion, vad))
-
-        if found_emotions:
-            primary_emotion, primary_vad = found_emotions[0]
-            keywords = [emotion for emotion, _ in found_emotions[:3]]
-        else:
-            primary_emotion = "중성"
-            primary_vad = [0.5, 0.5, 0.5]
-            keywords = ["중성"]
-
-        return {
-            "keywords": keywords,
-            "vad_scores": primary_vad,
-            "confidence": 0.6,  # 텍스트 추출은 낮은 신뢰도
-            "primary_emotion": primary_emotion,
-            "emotional_intensity": "medium",
-        }
-
-    def _fallback_emotion_analysis(self, diary_text: str) -> Dict[str, Any]:
-        """감정 분석 실패시 대체 분석"""
-
-        logger.info("GPT 감정 분석 실패, 키워드 기반 대체 분석 사용")
-
-        # 간단한 키워드 기반 분석
-        positive_keywords = [
-            "좋",
-            "행복",
-            "기쁨",
-            "즐거",
-            "만족",
-            "사랑",
-            "평화",
-            "감사",
-        ]
-        negative_keywords = [
-            "슬프",
-            "우울",
-            "화나",
-            "불안",
-            "걱정",
-            "스트레스",
-            "피곤",
-            "힘들",
-        ]
-        neutral_keywords = ["그냥", "보통", "평범", "일상", "생각"]
-
-        text = diary_text.lower()
-
-        # 키워드 카운트
-        positive_count = sum(1 for keyword in positive_keywords if keyword in text)
-        negative_count = sum(1 for keyword in negative_keywords if keyword in text)
-        neutral_count = sum(1 for keyword in neutral_keywords if keyword in text)
-
-        # 감정 결정
-        if positive_count > negative_count and positive_count > neutral_count:
-            primary_emotion = "긍정"
-            keywords = ["기쁨", "만족", "행복"]
-            vad_scores = (0.7, 0.6, 0.6)
-        elif negative_count > positive_count and negative_count > neutral_count:
-            primary_emotion = "부정"
-            keywords = ["슬픔", "걱정", "스트레스"]
-            vad_scores = (0.3, 0.5, 0.4)
-        else:
-            primary_emotion = "중성"
-            keywords = ["중성", "평온"]
-            vad_scores = (0.5, 0.5, 0.5)
-
-        return {
-            "success": True,
-            "keywords": keywords,
-            "vad_scores": vad_scores,
-            "confidence": 0.5,  # 대체 분석은 중간 신뢰도
-            "primary_emotion": primary_emotion,
-            "emotional_intensity": "medium",
-            "token_usage": {
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-            },
-            "processing_time": 0.1,
-            "fallback_used": True,
-        }

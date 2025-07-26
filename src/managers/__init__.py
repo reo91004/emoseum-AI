@@ -2,6 +2,7 @@
 
 from .user_manager import UserManager, User, PsychometricResult, VisualPreferences
 from .gallery_manager import GalleryManager, GalleryItem
+from .personalization_manager import PersonalizationManager
 
 __all__ = [
     "UserManager",
@@ -10,4 +11,5 @@ __all__ = [
     "VisualPreferences",
     "GalleryManager",
     "GalleryItem",
+    "PersonalizationManager",
 ]

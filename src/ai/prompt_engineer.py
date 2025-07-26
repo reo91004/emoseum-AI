@@ -114,6 +114,7 @@ Guidelines:
         emotion_keywords: List[str],
         coping_style: str,
         visual_preferences: Dict[str, Any],
+        user_id: str = "anonymous",
     ) -> Dict[str, Any]:
         """일기 내용을 GPT 기반 이미지 프롬프트로 변환"""
 
@@ -136,21 +137,14 @@ Guidelines:
                     "metadata": {},
                 }
 
-            # 3. GPT 시스템 메시지 구성
-            system_message = self._build_system_message(
-                coping_style, visual_preferences
-            )
-
-            # 4. 사용자 메시지 구성
-            user_message = self._build_user_message(
-                diary_text, emotion_keywords, visual_preferences
-            )
-
-            # 5. GPT API 호출
+            # 3. GPT API 호출 (GPTService에서 시스템/사용자 메시지 구성)
             gpt_response = self.gpt_service.generate_prompt_engineering_response(
-                system_message=system_message,
-                user_message=user_message,
-                max_tokens=100,  # 프롬프트는 짧게
+                diary_text=diary_text,
+                emotion_keywords=emotion_keywords,
+                coping_style=coping_style,
+                visual_preferences=visual_preferences,
+                user_id=user_id,
+                max_tokens=100,
                 temperature=0.7,
             )
 
@@ -167,7 +161,7 @@ Guidelines:
                 }
 
             # 6. 생성된 프롬프트 후처리
-            raw_prompt = gpt_response["content"]
+            raw_prompt = gpt_response.get("prompt", gpt_response.get("content", ""))
             processed_prompt = self._post_process_prompt(raw_prompt, visual_preferences)
 
             # 7. 최종 안전성 검증
@@ -194,7 +188,7 @@ Guidelines:
                     "visual_preferences": visual_preferences,
                     "prompt_length": len(processed_prompt),
                     "gpt_model": gpt_response.get("model", "unknown"),
-                    "gpt_tokens": gpt_response.get("usage", {}),
+                    "gpt_tokens": gpt_response.get("token_usage", {}),
                     "generation_method": "gpt_based",
                     "safety_validated": True,
                 },

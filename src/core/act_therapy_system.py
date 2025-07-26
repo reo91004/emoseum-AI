@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple, Optional, Any
 
 from ..managers.user_manager import UserManager, PsychometricResult
 from ..therapy.prompt_architect import PromptArchitect
-from ..ai.personalization_manager import PersonalizationManager
+from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
 from ..managers.gallery_manager import GalleryManager, GalleryItem
 from ..therapy.rule_manager import CopingStyleRules
@@ -187,7 +187,7 @@ class ACTTherapySystem:
 
         try:
             # GPT를 통한 감정 분석
-            emotion_analysis = self._analyze_emotion_with_gpt(diary_text)
+            emotion_analysis = self._analyze_emotion_with_gpt(diary_text, user_id)
 
             user = self.user_manager.get_user(user_id)
             if not user:
@@ -241,16 +241,16 @@ class ACTTherapySystem:
             logger.error(f"감정 여정 처리 실패: {e}")
             raise RuntimeError(f"감정 여정 처리에 실패했습니다: {e}")
 
-    def _analyze_emotion_with_gpt(self, diary_text: str) -> Dict[str, Any]:
+    def _analyze_emotion_with_gpt(self, diary_text: str, user_id: str = "anonymous") -> Dict[str, Any]:
         """GPT를 통한 감정 분석"""
         try:
             # GPT로 감정 분석 요청
-            analysis_result = self.gpt_service.analyze_emotion(diary_text)
+            analysis_result = self.gpt_service.analyze_emotion(diary_text, user_id=user_id)
 
             if analysis_result["success"]:
                 return {
                     "diary_text": diary_text,
-                    "keywords": analysis_result.get("keywords", ["중성"]),
+                    "keywords": analysis_result.get("keywords", ["neutral"]),
                     "vad_scores": analysis_result.get("vad_scores", (0.0, 0.0, 0.0)),
                     "analysis_confidence": analysis_result.get("confidence", 0.8),
                     "generation_method": "gpt",
@@ -281,6 +281,7 @@ class ACTTherapySystem:
                 vad_scores=emotion_analysis["vad_scores"],
                 coping_style=coping_style,
                 visual_preferences=user.visual_preferences.__dict__,
+                user_id=user.user_id,
             )
 
             generation_result = self.image_generator.generate_image(

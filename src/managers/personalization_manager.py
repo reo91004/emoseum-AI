@@ -1,4 +1,4 @@
-# src/personalization_manager.py
+# src/managers/personalization_manager.py
 
 import re
 from typing import Dict, List, Tuple, Any
@@ -331,7 +331,7 @@ class PersonalizationManager:
             ),
             "has_emotion": any(
                 word in title_lower
-                for word in ["기쁨", "슬픔", "화남", "평온", "불안", "외로움"]
+                for word in ["joy", "sadness", "anger", "peace", "anxiety", "loneliness"]
             ),
         }
 

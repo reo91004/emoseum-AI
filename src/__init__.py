@@ -11,6 +11,7 @@ from .managers.user_manager import (
     VisualPreferences,
 )
 from .managers.gallery_manager import GalleryManager, GalleryItem
+from .managers.personalization_manager import PersonalizationManager
 
 # Services
 from .services.image_generator import ImageGenerator
@@ -21,7 +22,6 @@ from .therapy.curator_message import CuratorMessageSystem
 from .therapy.rule_manager import CopingStyleRules
 
 # AI 모듈들
-from .ai.personalization_manager import PersonalizationManager
 
 # Training 모듈들
 from .training.lora_trainer import PersonalizedLoRATrainer
@@ -38,6 +38,7 @@ __all__ = [
     "VisualPreferences",
     "GalleryManager",
     "GalleryItem",
+    "PersonalizationManager",
     # Services
     "ImageGenerator",
     # Therapy
@@ -45,7 +46,6 @@ __all__ = [
     "CuratorMessageSystem",
     "CopingStyleRules",
     # AI
-    "PersonalizationManager",
     # Training
     "PersonalizedLoRATrainer",
     "DRaFTPlusTrainer",

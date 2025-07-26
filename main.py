@@ -372,19 +372,19 @@ class EmoseumCLI:
             curator_content = result["curator_message"]["content"]
 
             if curator_content.get("opening"):
-                print(f"\n💝 {curator_content['opening']}")
+                print(f"\n{curator_content['opening']}")
 
             if curator_content.get("recognition"):
-                print(f"\n🌱 {curator_content['recognition']}")
+                print(f"\n{curator_content['recognition']}")
 
             if curator_content.get("personal_note"):
-                print(f"\n✨ {curator_content['personal_note']}")
+                print(f"\n{curator_content['personal_note']}")
 
             if curator_content.get("guidance"):
-                print(f"\n🧭 {curator_content['guidance']}")
+                print(f"\n{curator_content['guidance']}")
 
             if curator_content.get("closing"):
-                print(f"\n🤝 {curator_content['closing']}")
+                print(f"\n{curator_content['closing']}")
 
             print("\n" + "=" * 60)
             print(result["completion_message"])
@@ -516,11 +516,11 @@ class EmoseumCLI:
         """큐레이터 메시지에 대한 사용자 반응 수집"""
         print("\n=== 메시지 반응 ===")
         print("이 메시지는 어떠셨나요?")
-        print("1. 👍 좋아요")
-        print("2. 💾 저장하고 싶어요")
-        print("3. 📤 다른 사람과 공유하고 싶어요")
-        print("4. 😐 괜찮아요")
-        print("5. ⏭️ 건너뛰기")
+        print("1. 좋아요")
+        print("2. 저장하고 싶어요")
+        print("3. 다른 사람과 공유하고 싶어요")
+        print("4. 괜찮아요")
+        print("5. 건너뛰기")
 
         reaction_choice = input("\n선택하세요 (1-5): ").strip()
 
@@ -550,11 +550,11 @@ class EmoseumCLI:
             )
 
             reaction_messages = {
-                "like": "소중한 반응 감사합니다! 📝",
-                "save": "메시지를 저장해드렸습니다! 💾",
-                "share": "따뜻한 마음을 나누고 싶으시는군요! 📤",
+                "like": "소중한 반응 감사합니다!",
+                "save": "메시지를 저장해드렸습니다!",
+                "share": "따뜻한 마음을 나누고 싶으시는군요!",
                 "dismiss": "피드백 감사합니다.",
-                "skip": "다음에 또 만나요! 👋",
+                "skip": "다음에 또 만나요!",
             }
 
             print(f"\n{reaction_messages.get(reaction_type, '감사합니다!')}")
@@ -597,11 +597,11 @@ class EmoseumCLI:
                 if item.get("message_reactions"):
                     reactions = item["message_reactions"]
                     reaction_icons = {
-                        "like": "👍",
-                        "save": "💾",
-                        "share": "📤",
-                        "dismiss": "😐",
-                        "skip": "⏭️",
+                        "like": "Like",
+                        "save": "Save",
+                        "share": "Share",
+                        "dismiss": "Dismiss",
+                        "skip": "Skip",
                     }
                     reaction_display = " ".join(
                         [reaction_icons.get(r, r) for r in reactions]

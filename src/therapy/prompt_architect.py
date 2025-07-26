@@ -13,13 +13,13 @@ class PromptArchitect:
         self.prompt_engineer = None  # GPT 프롬프트 엔지니어 주입받을 예정
         self.current_diary_text = ""  # 일기 텍스트 저장용
 
-        # 큐레이터 메시지로의 전환 안내 문구들 (GPT 독립적)
+        # 큐레이터 메시지로의 전환 안내 문구들
         self.curator_transition_phrases = [
-            "이제 당신의 여정을 함께 돌아보며, 작은 용기에 박수를 보내드리고 싶습니다.",
-            "이 감정의 탐험에서 보여준 당신의 진정성이 아름다웠습니다.",
-            "방금 완성한 이 이야기에 대해 함께 이야기해보시겠어요?",
-            "당신이 방금 마주한 감정에 대해 작은 격려를 전하고 싶습니다.",
-            "이번 여정에서 발견한 것들에 대해 함께 나누고 싶은 마음입니다.",
+            "Now I'd like to reflect on your journey together and acknowledge the courage you've shown.",
+            "The authenticity you've demonstrated in this emotional exploration has been beautiful.",
+            "Would you like to reflect together on the story you've just completed?",
+            "I'd like to offer some encouragement about the emotions you've just faced.",
+            "I'd love to share some thoughts about what you've discovered on this journey.",
         ]
 
     def set_prompt_engineer(self, prompt_engineer):
@@ -38,12 +38,9 @@ class PromptArchitect:
         vad_scores: Tuple[float, float, float],
         coping_style: str,
         visual_preferences: Dict[str, Any],
+        user_id: str = "anonymous",
     ) -> str:
-        """GPT 기반 감정 반영 프롬프트 생성 (ACT 2단계: Acceptance)
-
-        기존 하드코딩된 템플릿 시스템을 완전히 제거하고
-        PromptEngineer의 GPT 기반 생성으로 대체
-        """
+        """GPT 기반 감정 반영 프롬프트 생성 (ACT 2단계: Acceptance)"""
 
         if not self.prompt_engineer:
             raise RuntimeError(
@@ -63,6 +60,7 @@ class PromptArchitect:
             emotion_keywords=emotion_keywords,
             coping_style=coping_style,
             visual_preferences=visual_preferences,
+            user_id=user_id,
         )
 
         if not result["success"]:
@@ -81,10 +79,7 @@ class PromptArchitect:
     def create_guided_question(
         self, guestbook_title: str, emotion_keywords: List[str]
     ) -> str:
-        """큐레이터 메시지로의 전환을 위한 안내 질문 생성
-
-        이 기능은 GPT와 독립적으로 유지 (단순 전환 안내)
-        """
+        """큐레이터 메시지로의 전환을 위한 안내 질문 생성"""
         import random
 
         # 기본 전환 문구 선택
@@ -118,60 +113,34 @@ class PromptArchitect:
     def _create_title_based_guidance(self, title: str) -> str:
         """방명록 제목 기반 안내 생성"""
         if not title:
-            return "당신이 이 감정에 부여한 의미가 특별합니다."
-
-        # 제목의 톤에 따른 안내 메시지
-        title_lower = title.lower()
-
-        if any(word in title_lower for word in ["dark", "heavy", "storm", "cold"]):
-            return f"'{title}'라는 이름 속에서도 당신만의 깊이 있는 관점이 느껴집니다."
-        elif any(word in title_lower for word in ["light", "warm", "gentle", "soft"]):
-            return f"'{title}'에서 당신의 섬세한 감수성이 빛납니다."
-        elif any(word in title_lower for word in ["quiet", "still", "peaceful"]):
-            return f"'{title}'라는 표현에서 내면의 고요함을 찾는 지혜가 보입니다."
-        else:
-            return f"'{title}'라고 명명하신 선택에서 당신만의 독특한 시각이 돋보입니다."
+            return "The meaning you've given to this emotion is special."
+        
+        return f"Your choice to title this '{title}' shows your unique perspective and thoughtful reflection."
 
     def _create_emotion_encouragement(self, keywords: List[str]) -> str:
         """감정 키워드 기반 격려 메시지"""
         if not keywords:
-            return "이런 솔직한 감정 탐구가 정말 소중합니다."
+            return "Your honest emotional exploration is truly valuable."
 
-        primary_emotion = keywords[0]
-
-        encouragement_map = {
-            "슬픔": "슬픔을 온전히 받아들이신 용기가 아름답습니다.",
-            "기쁨": "이 기쁨을 우리와 나눠주셔서 감사합니다.",
-            "화남": "분노를 건설적으로 표현해내신 모습이 인상적입니다.",
-            "불안": "불안을 솔직하게 마주하신 용기에 박수를 보냅니다.",
-            "평온": "내면의 평화를 찾아가는 여정이 지혜롭습니다.",
-            "외로움": "외로움을 용기 있게 인정하신 정직함이 대단합니다.",
-            "피곤": "지친 마음을 돌보려는 당신의 배려가 아름답습니다.",
-        }
-
-        return encouragement_map.get(
-            primary_emotion, "이런 진솔한 감정 표현이 정말 의미 있습니다."
-        )
+        emotions_text = ", ".join(keywords)
+        return f"Your courage in exploring {emotions_text} shows genuine emotional intelligence and self-awareness."
 
     def _create_curator_preview(self, title: str, keywords: List[str]) -> str:
         """큐레이터 메시지 예고"""
         import random
 
         preview_messages = [
-            "잠시 후, 이 여정을 마무리하는 특별한 메시지를 준비해드리겠습니다.",
-            "당신의 이야기에 대한 작은 감사와 격려를 전해드리고 싶습니다.",
-            "이제 이 경험을 소중히 간직할 수 있도록 마무리해드리겠습니다.",
-            "당신이 보여준 용기에 대한 인정과 응원을 준비했습니다.",
-            "이 특별한 순간을 기념하는 메시지를 전달해드리겠습니다.",
+            "In a moment, I'll prepare a special message to close this journey.",
+            "I'd like to share some gratitude and encouragement about your story.",
+            "Now I'll help you treasure this experience with a thoughtful conclusion.",
+            "I've prepared some recognition and support for the courage you've shown.",
+            "I'll share a message to commemorate this special moment.",
         ]
 
         return random.choice(preview_messages)
 
     def get_prompt_analysis(self, prompt: str) -> Dict[str, Any]:
-        """프롬프트 분석 정보 반환
-
-        GPT 생성된 프롬프트에 대한 메타 분석
-        """
+        """프롬프트 분석 정보 반환"""
         analysis = {
             "word_count": len(prompt.split()),
             "character_count": len(prompt),
