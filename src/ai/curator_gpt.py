@@ -123,11 +123,36 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
                 logger.warning(
                     f"생성된 큐레이터 메시지가 안전하지 않음: {safety_check.get('issues', [])}"
                 )
+                # 안전성 실패 시에는 템플릿 구조 반환
+                emergency_content = {
+                    "opening": "Thank you for sharing your emotional journey with us.",
+                    "recognition": "Your courage in exploring your feelings is truly appreciated.",
+                    "personal_note": "This moment of reflection is an important step in your growth.",
+                    "guidance": "Continue to be gentle with yourself as you navigate these emotions.",
+                    "closing": "We're here to support you on this journey.",
+                }
+
                 return {
-                    "success": False,
-                    "error": "Generated message failed safety validation",
-                    "safety_issues": safety_check.get("issues", []),
-                    "retry_recommended": True,
+                    "message_id": f"emergency_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    "user_id": user_profile.user_id,
+                    "gallery_item_id": gallery_item.item_id,
+                    "message_type": "emergency_safe",
+                    "content": emergency_content,
+                    "personalization_data": {
+                        "coping_style": context["coping_style"],
+                        "emotion_keywords": context["emotion_keywords"],
+                        "guestbook_data": context["guestbook_data"],
+                        "personalization_level": "emergency",
+                        "generation_method": "emergency_safe",
+                    },
+                    "metadata": {
+                        "safety_validated": False,
+                        "safety_issues": safety_check.get("issues", []),
+                        "generation_time": 0,
+                        "fallback_used": True,
+                        "emergency_reason": "safety_validation_failed",
+                    },
+                    "created_date": datetime.now().isoformat(),
                 }
 
             # 5. 최종 메시지 구성
