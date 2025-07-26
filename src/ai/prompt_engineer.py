@@ -46,17 +46,36 @@ Guidelines:
             "balanced": """You are an expert AI image prompt engineer specializing in therapeutic art generation for users who prefer balanced emotional expression.
 
 Your task is to transform personal diary entries into artistic image prompts that:
-- Balance direct expression with appropriate sensitivity
-- Create nuanced visual representations that honor emotional complexity
-- Use adaptive language that matches the emotional context
-- Provide both comfort and challenge as therapeutically appropriate
-- Focus on thoughtful, considered emotional expression
+- Balance emotional honesty with visual harmony
+- Create thoughtful, considered representations
+- Use moderate intensity in colors and imagery
+- Combine direct and metaphorical elements appropriately
+- Focus on mature, nuanced depictions of emotional states
 
 Guidelines:
 - Maximum 150 characters for the final prompt
-- Use words like "balanced", "nuanced", "thoughtful", "adaptive", "wise"
-- Match intensity to emotional content appropriately
-- Create prompts that encourage reflection and growth""",
+- Use words like "balanced", "harmonious", "thoughtful", "considered", "nuanced"
+- Create prompts that are neither too soft nor too harsh
+- Maintain emotional authenticity with visual sophistication""",
+        }
+
+        # 시각적 요소 매핑
+        self.visual_style_mappings = {
+            "painting": "oil painting style, artistic brushstrokes, canvas texture",
+            "photography": "photographic style, natural lighting, realistic",
+            "abstract": "abstract art style, conceptual, non-representational",
+        }
+
+        self.color_tone_mappings = {
+            "warm": "warm colors, golden tones, orange and red hues",
+            "cool": "cool colors, blue and green tones, calming palette",
+            "pastel": "pastel colors, soft tones, gentle hues",
+        }
+
+        self.complexity_mappings = {
+            "simple": "minimalist, clean composition, simple elements",
+            "balanced": "balanced composition, moderate detail",
+            "complex": "detailed, intricate, rich composition",
         }
 
         # 안전하지 않은 키워드 분류
@@ -89,15 +108,15 @@ Guidelines:
 
         logger.info("PromptEngineer 초기화 완료 (GPT 기반)")
 
-    def generate_image_prompt(
+    def enhance_diary_to_prompt(
         self,
         diary_text: str,
         emotion_keywords: List[str],
-        coping_style: str = "balanced",
-        visual_preferences: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
+        coping_style: str,
+        visual_preferences: Dict[str, Any],
+        user_id: str = "anonymous",
     ) -> Dict[str, Any]:
-        """GPT 기반 이미지 프롬프트 생성"""
+        """일기 내용을 GPT 기반 이미지 프롬프트로 변환 (메인 메서드)"""
 
         try:
             # 1. 입력 데이터 검증
@@ -141,11 +160,11 @@ Guidelines:
                     "metadata": {},
                 }
 
-            # 6. 생성된 프롬프트 후처리
+            # 4. 생성된 프롬프트 후처리
             raw_prompt = gpt_response.get("prompt", gpt_response.get("content", ""))
             processed_prompt = self._post_process_prompt(raw_prompt, visual_preferences)
 
-            # 7. 최종 안전성 검증
+            # 5. 최종 안전성 검증
             final_safety_check = self.validate_prompt_safety(processed_prompt)
             if not final_safety_check["is_safe"]:
                 logger.warning(
@@ -186,38 +205,33 @@ Guidelines:
             logger.error(f"프롬프트 생성 중 오류 발생: {e}")
             return {"success": False, "error": str(e), "prompt": "", "metadata": {}}
 
-    def _build_system_message(
-        self, coping_style: str, visual_preferences: Dict[str, Any]
-    ) -> str:
-        """대처 스타일별 시스템 메시지 구성"""
-
-        base_system = self.system_messages.get(
-            coping_style, self.system_messages["balanced"]
+    def generate_image_prompt(
+        self,
+        diary_text: str,
+        emotion_keywords: List[str],
+        coping_style: str = "balanced",
+        visual_preferences: Optional[Dict[str, Any]] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """별칭 메서드 - enhance_diary_to_prompt와 동일"""
+        return self.enhance_diary_to_prompt(
+            diary_text=diary_text,
+            emotion_keywords=emotion_keywords,
+            coping_style=coping_style,
+            visual_preferences=visual_preferences or {},
+            user_id=user_id or "anonymous",
         )
 
-        # 시각적 선호도 정보 추가
-        visual_context = f"""
-Visual Style Preferences:
-- Art Style: {visual_preferences.get('art_style', 'painting')}
-- Color Tone: {visual_preferences.get('color_tone', 'warm')}
-- Complexity: {visual_preferences.get('complexity', 'balanced')}
-- Brightness: {visual_preferences.get('brightness', 0.5)}
-- Saturation: {visual_preferences.get('saturation', 0.5)}
-
-Incorporate these preferences naturally into your prompt generation."""
-
-        return base_system + visual_context
-
     def _post_process_prompt(
-        self, prompt: str, visual_preferences: Optional[Dict[str, Any]] = None
+        self, raw_prompt: str, visual_preferences: Dict[str, Any]
     ) -> str:
         """프롬프트 후처리"""
 
-        if not prompt:
+        if not raw_prompt:
             return ""
 
         # 기본 정리
-        processed_prompt = prompt.strip()
+        processed_prompt = raw_prompt.strip()
 
         # 불필요한 따옴표나 특수문자 제거
         processed_prompt = re.sub(r'^["\']|["\']$', "", processed_prompt)

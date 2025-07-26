@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import json
 from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()  # .env 파일에서 환경변수 로드
 
 from src.core.act_therapy_system import ACTTherapySystem
 
