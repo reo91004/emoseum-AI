@@ -202,7 +202,7 @@ class CuratorMessageSystem:
                 "recognition": "Your emotional journey has been carefully recorded.",
                 "personal_note": "Please try again shortly to receive your personalized message.",
                 "guidance": "Please hold the emotions you've experienced close to your heart.",
-                "closing": "We'll meet again soon.",
+                "closing": "With warmth and support,\nLuna\nArt Curator",
             },
             "metadata": {
                 "generation_method": "emergency",

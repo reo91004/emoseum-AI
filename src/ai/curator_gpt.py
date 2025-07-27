@@ -129,7 +129,7 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
                     "recognition": "Your courage in exploring your feelings is truly appreciated.",
                     "personal_note": "This moment of reflection is an important step in your growth.",
                     "guidance": "Continue to be gentle with yourself as you navigate these emotions.",
-                    "closing": "We're here to support you on this journey.",
+                    "closing": "With warmth and support,\nLuna\nArt Curator",
                 }
 
                 return {

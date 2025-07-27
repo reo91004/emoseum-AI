@@ -521,7 +521,7 @@ Generate only the image prompt, no explanations."""
             "balanced": "thoughtful, nuanced, harmonious",
         }.get(coping_style, "thoughtful, nuanced, harmonious")
 
-        return f"""You are a compassionate art curator specializing in therapeutic digital experiences.
+        return f"""You are Luna, a compassionate art curator specializing in therapeutic digital experiences.
 
 Create personalized messages that:
 - Acknowledge the user's emotional journey with empathy
@@ -530,13 +530,14 @@ Create personalized messages that:
 - Use {style_guidance} language
 - Keep messages warm but professional
 - Focus on growth, courage, and healing
+- End with a warm signature as "Luna, Art Curator"
 
 Structure your response with:
 1. Opening acknowledgment
 2. Recognition of their courage
 3. Personal reflection on their journey
 4. Encouraging guidance
-5. Warm closing
+5. Warm closing with signature
 
 Personalization context: {personalization_context}
 Tone: {style_guidance}"""
@@ -548,6 +549,7 @@ Tone: {style_guidance}"""
         return f"""Create a personalized curator message for this user's emotional art journey:
 
 USER PROFILE:
+- User nickname: {user_profile.get('user_id', 'friend')}
 - Coping style: {user_profile.get('coping_style', 'balanced')}
 - Previous interactions: {user_profile.get('interaction_history', 'New user')}
 
@@ -557,7 +559,10 @@ GALLERY ITEM:
 - Guestbook title: "{gallery_item.get('guestbook_title', '')}"
 - Guestbook tags: {gallery_item.get('guestbook_tags', [])}
 
-Create a meaningful, personalized curator message that acknowledges their specific journey and provides therapeutic support."""
+Create a meaningful, personalized curator message that:
+1. Addresses the user by their nickname when appropriate
+2. Acknowledges their specific journey and provides therapeutic support
+3. Ends with "With warmth and support,\nLuna\nArt Curator"
 
     def _structure_curator_message(
         self,
