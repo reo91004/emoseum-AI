@@ -10,7 +10,6 @@ from ..therapy.prompt_architect import PromptArchitect
 from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
 from ..managers.gallery_manager import GalleryManager, GalleryItem
-from ..therapy.rule_manager import CopingStyleRules
 from ..therapy.curator_message import CuratorMessageSystem
 
 logger = logging.getLogger(__name__)
@@ -40,7 +39,6 @@ class ACTTherapySystem:
             db_path=str(self.data_dir / "gallery.db"),
             images_dir=str(self.data_dir / "gallery_images"),
         )
-        self.rule_manager = CopingStyleRules()
 
         # GPT 서비스들 초기화
         self._initialize_gpt_services()

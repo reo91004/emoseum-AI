@@ -25,7 +25,6 @@ src/
 ├── image_generator.py         # Stable Diffusion 이미지 생성
 ├── gallery_manager.py         # 감정 여정 데이터베이스 관리
 ├── personalization_manager.py # 룰 기반 개인화 엔진
-└── rule_manager.py           # 대처 스타일별 감정 표현 규칙
 
 training/
 ├── lora_trainer.py           # LoRA 개인화 트레이너 (Level 3)

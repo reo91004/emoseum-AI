@@ -19,7 +19,6 @@ from .services.image_generator import ImageGenerator
 # Therapy 모듈들
 from .therapy.prompt_architect import PromptArchitect
 from .therapy.curator_message import CuratorMessageSystem
-from .therapy.rule_manager import CopingStyleRules
 
 # AI 모듈들
 
@@ -44,7 +43,6 @@ __all__ = [
     # Therapy
     "PromptArchitect",
     "CuratorMessageSystem",
-    "CopingStyleRules",
     # AI
     # Training
     "PersonalizedLoRATrainer",
