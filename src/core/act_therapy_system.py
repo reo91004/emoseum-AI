@@ -397,7 +397,7 @@ class ACTTherapySystem:
                 "step": "closure_complete",
                 "curator_message": curator_message,
                 "journey_complete": True,
-                "completion_message": "감정의 여정이 완성되었습니다. 큐레이터가 당신의 용기를 인정합니다.",
+                "completion_message": "감정의 여정이 완성되었습니다.",
                 "next_recommendations": [
                     "미술관에서 이전 작품들을 돌아보기",
                     "새로운 감정 일기 작성하기",
