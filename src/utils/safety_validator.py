@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 import logging
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -15,230 +16,89 @@ class SafetyValidator:
     def __init__(self, safety_rules_path: Optional[str] = None):
         self.safety_rules_path = Path(safety_rules_path) if safety_rules_path else None
 
-        # 기본 안전성 규칙
-        self.default_safety_rules = {
-            "critical_keywords": {
-                "self_harm": [
-                    "suicide",
-                    "kill myself",
-                    "end it all",
-                    "want to die",
-                    "take my life",
-                    "self-harm",
-                    "cutting",
-                    "hurt myself",
-                    "overdose",
-                    "hanging",
-                    "jump off",
-                    "slit my",
-                    "razor",
-                    "pills to die",
-                    "end my suffering",
-                ],
-                "violence": [
-                    "kill someone",
-                    "murder",
-                    "violence",
-                    "weapon",
-                    "gun",
-                    "knife",
-                    "hurt others",
-                    "attack",
-                    "assault",
-                    "fight",
-                    "blood",
-                    "stab",
-                ],
-                "extreme_despair": [
-                    "completely hopeless",
-                    "absolutely worthless",
-                    "total failure",
-                    "beyond help",
-                    "nothing left",
-                    "can't go on",
-                    "no point",
-                    "permanent darkness",
-                    "irredeemable",
-                    "unforgivable",
-                ],
-            },
-            "warning_keywords": {
-                "negative_self_talk": [
-                    "hate myself",
-                    "worthless",
-                    "stupid",
-                    "failure",
-                    "loser",
-                    "pathetic",
-                    "useless",
-                    "burden",
-                    "mistake",
-                    "garbage",
-                ],
-                "isolation_indicators": [
-                    "no one cares",
-                    "completely alone",
-                    "nobody understands",
-                    "isolated forever",
-                    "cut off from everyone",
-                    "abandoned",
-                ],
-                "hopelessness": [
-                    "no hope",
-                    "hopeless",
-                    "pointless",
-                    "meaningless",
-                    "empty",
-                    "void",
-                    "dark",
-                    "trapped",
-                    "stuck forever",
-                    "no way out",
-                ],
-            },
-            "inappropriate_responses": {
-                "directive_advice": [
-                    "you should",
-                    "you must",
-                    "you need to",
-                    "you have to",
-                    "just think positive",
-                    "get over it",
-                    "snap out of it",
-                    "it's all in your head",
-                    "others have it worse",
-                ],
-                "minimizing": [
-                    "it's not that bad",
-                    "you're overreacting",
-                    "calm down",
-                    "don't be dramatic",
-                    "stop being negative",
-                    "just relax",
-                ],
-                "medical_advice": [
-                    "take medication",
-                    "stop your medication",
-                    "change your dose",
-                    "don't need therapy",
-                    "cure your depression",
-                    "fix your problems",
-                ],
-            },
-        }
-
-        # 치료적 품질 지표
-        self.therapeutic_quality_indicators = {
-            "positive": [
-                "support",
-                "understand",
-                "courage",
-                "strength",
-                "journey",
-                "growth",
-                "healing",
-                "hope",
-                "resilience",
-                "progress",
-                "acceptance",
-                "compassion",
-                "validation",
-                "recognition",
-                "wisdom",
-                "perspective",
-                "balance",
-            ],
-            "empathetic": [
-                "feel",
-                "experience",
-                "acknowledge",
-                "recognize",
-                "honor",
-                "respect",
-                "appreciate",
-                "value",
-                "treasure",
-                "cherish",
-                "meaningful",
-                "significant",
-            ],
-            "empowering": [
-                "capable",
-                "able",
-                "potential",
-                "possibility",
-                "opportunity",
-                "choice",
-                "decision",
-                "control",
-                "agency",
-                "empowerment",
-                "autonomy",
-            ],
-        }
-
-        # 전문가 상담 권유 조건
-        self.professional_referral_triggers = {
-            "immediate": [
-                "suicide",
-                "self-harm",
-                "kill myself",
-                "want to die",
-                "end it all",
-                "hurt myself",
-                "overdose",
-                "can't go on",
-            ],
-            "urgent": [
-                "completely hopeless",
-                "beyond help",
-                "no point in living",
-                "permanent darkness",
-                "can't handle it",
-                "breaking down",
-            ],
-            "recommended": [
-                "struggling for weeks",
-                "getting worse",
-                "can't function",
-                "affecting work",
-                "affecting relationships",
-                "sleep problems",
-                "appetite changes",
-                "panic attacks",
-                "anxiety overwhelming",
-            ],
-        }
-
-        # 사용자 정의 규칙 로드
+        # YAML 파일에서 안전성 규칙 로드
         if self.safety_rules_path and self.safety_rules_path.exists():
-            self._load_custom_rules()
+            self.default_safety_rules = self._load_safety_rules_from_yaml()
+            logger.info(
+                f"안전성 규칙을 YAML 파일에서 로드했습니다: {self.safety_rules_path}"
+            )
+        else:
+            # YAML 파일 로드 실패 시 에러 발생
+            if self.safety_rules_path:
+                logger.error(
+                    f"안전성 규칙 파일을 찾을 수 없습니다: {self.safety_rules_path}"
+                )
+                raise FileNotFoundError(
+                    f"Safety rules file not found: {self.safety_rules_path}"
+                )
+            else:
+                logger.error("안전성 규칙 파일 경로가 제공되지 않았습니다")
+                raise ValueError("Safety rules file path is required")
 
-    def _load_custom_rules(self):
-        """사용자 정의 안전성 규칙 로드"""
+        # 치료적 품질 지표와 전문가 상담 권유 조건은 YAML에서 로드됨
+
+        # YAML 파일에서 나머지 설정도 로드
+        self._load_additional_settings_from_yaml()
+
+    def _load_safety_rules_from_yaml(self) -> Dict[str, Any]:
+        """YAML 파일에서 안전성 규칙 로드"""
         try:
             with open(self.safety_rules_path, "r", encoding="utf-8") as f:
-                custom_rules = json.load(f)
+                yaml_data = yaml.safe_load(f)
 
-            # 기본 규칙과 병합
-            for category, subcategories in custom_rules.items():
-                if category in self.default_safety_rules:
-                    for subcategory, keywords in subcategories.items():
-                        if subcategory in self.default_safety_rules[category]:
-                            self.default_safety_rules[category][subcategory].extend(
-                                keywords
-                            )
-                        else:
-                            self.default_safety_rules[category][subcategory] = keywords
-                else:
-                    self.default_safety_rules[category] = subcategories
+            # 필요한 섹션들 추출
+            safety_rules = {}
 
-            logger.info(
-                f"사용자 정의 안전성 규칙이 로드되었습니다: {self.safety_rules_path}"
-            )
+            for section in [
+                "critical_keywords",
+                "warning_keywords",
+                "inappropriate_responses",
+            ]:
+                if section in yaml_data:
+                    safety_rules[section] = yaml_data[section]
+
+            return safety_rules
 
         except Exception as e:
-            logger.warning(f"사용자 정의 안전성 규칙 로드 실패: {e}")
+            logger.error(f"YAML 안전성 규칙 로드 실패: {e}")
+            raise
+
+    def _load_additional_settings_from_yaml(self):
+        """YAML 파일에서 추가 설정 로드"""
+        try:
+            with open(self.safety_rules_path, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f)
+
+            # therapeutic_quality_indicators 로드
+            if "therapeutic_quality" in yaml_data:
+                therapeutic = yaml_data["therapeutic_quality"]
+                self.therapeutic_quality_indicators = {}
+
+                for category in ["positive_indicators", "empathetic_indicators"]:
+                    if category in therapeutic:
+                        # YAML의 중첩 구조를 평면화
+                        self.therapeutic_quality_indicators[
+                            category.replace("_indicators", "")
+                        ] = []
+                        for subcategory in therapeutic[category].values():
+                            self.therapeutic_quality_indicators[
+                                category.replace("_indicators", "")
+                            ].extend(subcategory)
+
+            # professional_referral_triggers 로드
+            if "professional_referral" in yaml_data:
+                referral_data = yaml_data["professional_referral"]
+                self.professional_referral_triggers = {}
+
+                for level in ["immediate", "urgent", "recommended"]:
+                    if level in referral_data and "keywords" in referral_data[level]:
+                        self.professional_referral_triggers[level] = referral_data[
+                            level
+                        ]["keywords"]
+
+        except Exception as e:
+            logger.error(f"추가 YAML 설정 로드 실패: {e}")
+            raise
 
     def validate_gpt_response(
         self, response: str, context: Dict[str, Any]

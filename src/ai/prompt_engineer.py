@@ -3,6 +3,8 @@
 import re
 from typing import Dict, List, Tuple, Any, Optional
 import logging
+import yaml
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -10,103 +12,61 @@ logger = logging.getLogger(__name__)
 class PromptEngineer:
     """일기 내용을 이미지 프롬프트로 변환"""
 
-    def __init__(self, gpt_service):
+    def __init__(self, gpt_service, gpt_prompts_path: Optional[str] = None):
         self.gpt_service = gpt_service
+        self.gpt_prompts_path = Path(gpt_prompts_path) if gpt_prompts_path else None
 
-        # 대처 스타일별 시스템 메시지 템플릿
-        self.system_messages = {
-            "avoidant": """You are an expert AI image prompt engineer specializing in therapeutic art generation for sensitive users who prefer gentle, indirect emotional expression.
-
-Your task is to transform personal diary entries into artistic image prompts that:
-- Use soft, metaphorical language instead of direct emotional terms
-- Create a protective, safe visual atmosphere
-- Employ gentle, soothing imagery and colors
-- Avoid harsh or confrontational visual elements
-- Focus on abstract, non-threatening representations of emotions
-
-Guidelines:
-- Maximum 150 characters for the final prompt
-- Use words like "gentle", "soft", "peaceful", "distant", "dreamy"
-- Transform negative emotions into softer metaphors (storm → gentle rain, darkness → twilight)
-- Prioritize comfort and emotional safety over direct expression""",
-            "confrontational": """You are an expert AI image prompt engineer specializing in therapeutic art generation for users who prefer direct, honest emotional expression.
-
-Your task is to transform personal diary entries into artistic image prompts that:
-- Use clear, direct language that doesn't avoid difficult emotions
-- Create authentic, unfiltered visual representations
-- Employ bold colors and strong contrasts when appropriate
-- Allow for intense imagery that matches emotional reality
-- Focus on honest, confrontational depictions of inner states
-
-Guidelines:
-- Maximum 150 characters for the final prompt
-- Use words like "bold", "intense", "raw", "authentic", "unmasked"
-- Maintain emotional honesty while keeping imagery constructive
-- Transform emotions into powerful, direct visual metaphors""",
-            "balanced": """You are an expert AI image prompt engineer specializing in therapeutic art generation for users who prefer balanced emotional expression.
-
-Your task is to transform personal diary entries into artistic image prompts that:
-- Balance emotional honesty with visual harmony
-- Create thoughtful, considered representations
-- Use moderate intensity in colors and imagery
-- Combine direct and metaphorical elements appropriately
-- Focus on mature, nuanced depictions of emotional states
-
-Guidelines:
-- Maximum 150 characters for the final prompt
-- Use words like "balanced", "harmonious", "thoughtful", "considered", "nuanced"
-- Create prompts that are neither too soft nor too harsh
-- Maintain emotional authenticity with visual sophistication""",
-        }
-
-        # 시각적 요소 매핑
-        self.visual_style_mappings = {
-            "painting": "oil painting style, artistic brushstrokes, canvas texture",
-            "photography": "photographic style, natural lighting, realistic",
-            "abstract": "abstract art style, conceptual, non-representational",
-        }
-
-        self.color_tone_mappings = {
-            "warm": "warm colors, golden tones, orange and red hues",
-            "cool": "cool colors, blue and green tones, calming palette",
-            "pastel": "pastel colors, soft tones, gentle hues",
-        }
-
-        self.complexity_mappings = {
-            "simple": "minimalist, clean composition, simple elements",
-            "balanced": "balanced composition, moderate detail",
-            "complex": "detailed, intricate, rich composition",
-        }
-
-        # 안전하지 않은 키워드 분류
-        self.unsafe_keywords = {
-            "self_harm": [
-                "suicide",
-                "kill myself",
-                "end it all",
-                "cutting",
-                "self harm",
-                "self-harm",
-            ],
-            "violence": [
-                "kill",
-                "murder",
-                "weapon",
-                "blood",
-                "violence",
-                "death",
-                "harm others",
-            ],
-            "sexual": ["sexual", "nude", "naked", "porn", "explicit"],
-            "extreme_negative": [
-                "hopeless",
-                "worthless",
-                "hate myself",
-                "complete failure",
-            ],
-        }
+        # YAML 파일에서 모든 설정 로드
+        if self.gpt_prompts_path and self.gpt_prompts_path.exists():
+            self._load_all_settings_from_yaml()
+            logger.info(
+                f"모든 설정을 YAML 파일에서 로드했습니다: {self.gpt_prompts_path}"
+            )
+        else:
+            # YAML 파일 로드 실패 시 에러 발생
+            if self.gpt_prompts_path:
+                logger.error(
+                    f"GPT 프롬프트 파일을 찾을 수 없습니다: {self.gpt_prompts_path}"
+                )
+                raise FileNotFoundError(
+                    f"GPT prompts file not found: {self.gpt_prompts_path}"
+                )
+            else:
+                logger.error("GPT 프롬프트 파일 경로가 제공되지 않았습니다")
+                raise ValueError("GPT prompts file path is required")
 
         logger.info("PromptEngineer 초기화 완료")
+
+    def _load_all_settings_from_yaml(self):
+        """YAML 파일에서 모든 설정 로드"""
+        try:
+            with open(self.gpt_prompts_path, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f)
+
+            # 시스템 메시지 로드
+            if "prompt_engineering" in yaml_data:
+                prompt_data = yaml_data["prompt_engineering"]
+                self.system_messages = {}
+                for style in ["avoidant", "confrontational", "balanced"]:
+                    if style in prompt_data and "system_message" in prompt_data[style]:
+                        self.system_messages[style] = prompt_data[style][
+                            "system_message"
+                        ]
+
+            # 시각적 매핑 로드
+            if "visual_mappings" in yaml_data:
+                mappings = yaml_data["visual_mappings"]
+                self.visual_style_mappings = mappings.get("style_mappings", {})
+                self.color_tone_mappings = mappings.get("color_tone_mappings", {})
+                self.complexity_mappings = mappings.get("complexity_mappings", {})
+
+            # 안전 키워드 로드
+            if "unsafe_keywords" in yaml_data:
+                self.unsafe_keywords = yaml_data["unsafe_keywords"]
+
+        except Exception as e:
+            logger.error(f"YAML 설정 로드 실패: {e}")
+            raise
 
     def enhance_diary_to_prompt(
         self,
@@ -484,9 +444,7 @@ Guidelines:
         """큐레이터 전환 안내 질문 생성"""
 
         try:
-            logger.info(
-                f"큐레이터 전환 안내 질문 생성 시작: {guestbook_title}"
-            )
+            logger.info(f"큐레이터 전환 안내 질문 생성 시작: {guestbook_title}")
 
             # GPT 서비스를 통해 전환 안내 질문 생성
             gpt_response = self.gpt_service.generate_transition_guidance(
@@ -566,7 +524,6 @@ Guidelines:
             "generation_method": "gpt_only",
             "fallback_available": False,
             "hardcoded_templates": False,
-            "simulation_mode": False,
             "gpt_integration": "complete",
             "safety_validation_enabled": True,
             "coping_style_support": ["avoidant", "confrontational", "balanced"],

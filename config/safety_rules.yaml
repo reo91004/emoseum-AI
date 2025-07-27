@@ -141,6 +141,44 @@ professional_referral:
     action: "general_referral"
     message: "지속적인 어려움을 겪고 계시는군요. 전문가의 도움을 받아보시는 것을 고려해보시기 바랍니다."
 
+# 부적절한 응답 패턴
+inappropriate_responses:
+  directive_advice:
+    - "you should"
+    - "you must"
+    - "you need to"
+    - "you have to"
+    - "just think positive"
+    - "get over it"
+    - "snap out of it"
+    - "it's all in your head"
+    - "others have it worse"
+    - "해야 한다"
+    - "무조건"
+    - "반드시"
+
+  minimizing:
+    - "it's not that bad"
+    - "you're overreacting"
+    - "calm down"
+    - "don't be dramatic"
+    - "stop being negative"
+    - "just relax"
+    - "그 정도는 아니야"
+    - "과민반응"
+    - "진정해"
+
+  medical_advice:
+    - "take medication"
+    - "stop your medication"
+    - "change your dose"
+    - "don't need therapy"
+    - "cure your depression"
+    - "fix your problems"
+    - "약을 먹어"
+    - "약을 끊어"
+    - "치료 필요 없어"
+
 # 치료적 품질 지표
 therapeutic_quality:
   positive_indicators:

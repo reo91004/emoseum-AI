@@ -112,7 +112,6 @@ class CopingStyleRules:
             "generation_method": "gpt_only",
             "fallback_available": False,
             "hardcoded_templates": False,
-            "simulation_mode": False,
             "gpt_integration": "complete",
             "language_consistency": "english_only",
             "error_handling": "graceful_failure",

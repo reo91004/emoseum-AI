@@ -3,6 +3,8 @@
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+import yaml
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -10,70 +12,52 @@ logger = logging.getLogger(__name__)
 class CuratorGPT:
     """큐레이터 메시지 생성"""
 
-    def __init__(self, gpt_service, safety_validator):
+    def __init__(
+        self, gpt_service, safety_validator, gpt_prompts_path: Optional[str] = None
+    ):
         self.gpt_service = gpt_service
         self.safety_validator = safety_validator
+        self.gpt_prompts_path = Path(gpt_prompts_path) if gpt_prompts_path else None
+
+        # YAML 파일에서 큐레이터 가이드라인 로드
+        if self.gpt_prompts_path and self.gpt_prompts_path.exists():
+            self.curator_guidelines = self._load_curator_guidelines_from_yaml()
+            logger.info(
+                f"큐레이터 가이드라인을 YAML 파일에서 로드했습니다: {self.gpt_prompts_path}"
+            )
+        else:
+            # YAML 파일 로드 실패 시 에러 발생
+            if self.gpt_prompts_path:
+                logger.error(
+                    f"GPT 프롬프트 파일을 찾을 수 없습니다: {self.gpt_prompts_path}"
+                )
+                raise FileNotFoundError(
+                    f"GPT prompts file not found: {self.gpt_prompts_path}"
+                )
+            else:
+                logger.error("GPT 프롬프트 파일 경로가 제공되지 않았습니다")
+                raise ValueError("GPT prompts file path is required")
 
         logger.info("CuratorGPT 초기화 완료")
+
+    def _load_curator_guidelines_from_yaml(self) -> Dict[str, Any]:
+        """YAML 파일에서 큐레이터 가이드라인 로드"""
+        try:
+            with open(self.gpt_prompts_path, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f)
+
+            return yaml_data.get("curator_messages", {})
+
+        except Exception as e:
+            logger.error(f"YAML 큐레이터 가이드라인 로드 실패: {e}")
+            raise
 
     def get_coping_style_guidelines(self, coping_style: str) -> str:
         """대처 스타일별 가이드라인"""
 
-        guidelines = {
-            "encouraging": """Your role is to create uplifting, positive messages that inspire growth and resilience.
-
-Communication Style:
-- Use warm, energetic language that motivates action
-- Focus on strengths, potential, and positive possibilities 
-- Frame challenges as opportunities for growth
-- Encourage bold emotional exploration and expression
-- Provide optimistic guidance that builds confidence
-
-Message Structure:
-- Opening: Bright, energetic acknowledgment of their sharing
-- Recognition: Celebrate their courage and progress enthusiastically  
-- Personal Note: Highlight their unique strengths and potential
-- Guidance: Inspiring suggestions for continued growth and exploration
-- Closing: Confident, uplifting support for their journey ahead
-
-Tone: Warm, uplifting, energetic, optimistic, motivating""",
-            "softening": """Your role is to create gentle, compassionate messages that provide comfort and understanding.
-
-Communication Style:
-- Use soft, soothing language that brings peace and validation
-- Focus on acceptance, self-compassion, and emotional safety
-- Normalize difficult emotions and experiences with gentleness
-- Encourage patience and kindness toward oneself
-- Provide gentle wisdom that promotes healing
-
-Message Structure:
-- Opening: Gentle, warm acknowledgment of their vulnerable sharing
-- Recognition: Soft appreciation of their emotional bravery
-- Personal Note: Tender validation that honors their experience
-- Guidance: Gentle suggestions for self-care and emotional safety
-- Closing: Soft, nurturing support that emphasizes safety
-
-Tone: Gentle, soft, nurturing, accepting, peaceful""",
-            "balanced": """Your role is to create personalized, harmonious messages that balance emotional honesty with gentle guidance.
-
-Communication Style:
-- Use mature, considered language that honors complexity
-- Balance directness with sensitivity appropriately
-- Focus on thoughtful reflection and wise perspective
-- Encourage both courage and self-compassion
-- Provide guidance that respects their autonomy
-
-Message Structure:
-- Opening: Thoughtful, balanced acknowledgment
-- Recognition: Mature appreciation of their emotional work
-- Personal Note: Nuanced validation that honors their complexity
-- Guidance: Wise, balanced suggestions for continued growth
-- Closing: Respectful support that honors their journey
-
-Tone: Wise, balanced, thoughtful, respectful, encouraging""",
-        }
-
-        return guidelines.get(coping_style, guidelines["balanced"])
+        # YAML에서 큐레이터 가이드라인 가져오기
+        style_data = self.curator_guidelines[coping_style]
+        return style_data["system_message"]
 
     def generate_personalized_message(
         self,
@@ -458,7 +442,6 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
             "generation_method": "gpt_only",
             "fallback_available": False,
             "hardcoded_templates": False,
-            "simulation_mode": False,
             "gpt_integration": "complete",
             "safety_validation": "enabled",
             "personalization_enabled": True,

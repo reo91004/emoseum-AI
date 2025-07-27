@@ -66,11 +66,25 @@ class ACTTherapySystem:
 
             logger.info("GPT 서비스 컴포넌트들을 초기화합니다...")
 
+            # YAML 파일 경로 설정
+            config_dir = Path("config")
+            safety_rules_path = str(config_dir / "safety_rules.yaml")
+            gpt_prompts_path = str(config_dir / "gpt_prompts.yaml")
+
+            # 컴포넌트들 초기화 (YAML 파일 경로 전달)
             self.cost_tracker = CostTracker(str(self.data_dir / "cost_tracking.db"))
-            self.gpt_service = GPTService(cost_tracker=self.cost_tracker)
-            self.safety_validator = SafetyValidator()
-            self.prompt_engineer = PromptEngineer(self.gpt_service)
-            self.curator_gpt = CuratorGPT(self.gpt_service, self.safety_validator)
+            self.gpt_service = GPTService(
+                cost_tracker=self.cost_tracker, gpt_prompts_path=gpt_prompts_path
+            )
+            self.safety_validator = SafetyValidator(safety_rules_path=safety_rules_path)
+            self.prompt_engineer = PromptEngineer(
+                self.gpt_service, gpt_prompts_path=gpt_prompts_path
+            )
+            self.curator_gpt = CuratorGPT(
+                self.gpt_service,
+                self.safety_validator,
+                gpt_prompts_path=gpt_prompts_path,
+            )
 
             logger.info("모든 GPT 서비스 컴포넌트가 성공적으로 초기화되었습니다.")
 

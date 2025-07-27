@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime, timedelta
 import logging
 from pathlib import Path
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +32,31 @@ class GPTService:
         api_key: Optional[str] = None,
         model: str = "gpt-4o-mini",
         cost_tracker: Optional[CostTracker] = None,
+        gpt_prompts_path: Optional[str] = None,
     ):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
         self.client = None
+        self.gpt_prompts_path = Path(gpt_prompts_path) if gpt_prompts_path else None
+
+        # YAML 파일에서 프롬프트 템플릿 로드
+        if self.gpt_prompts_path and self.gpt_prompts_path.exists():
+            self.prompt_templates = self._load_prompt_templates_from_yaml()
+            logger.info(
+                f"프롬프트 템플릿을 YAML 파일에서 로드했습니다: {self.gpt_prompts_path}"
+            )
+        else:
+            # YAML 파일 로드 실패 시 에러 발생
+            if self.gpt_prompts_path:
+                logger.error(
+                    f"GPT 프롬프트 파일을 찾을 수 없습니다: {self.gpt_prompts_path}"
+                )
+                raise FileNotFoundError(
+                    f"GPT prompts file not found: {self.gpt_prompts_path}"
+                )
+            else:
+                logger.error("GPT 프롬프트 파일 경로가 제공되지 않았습니다")
+                raise ValueError("GPT prompts file path is required")
 
         # 기본 설정
         self.default_params = {
@@ -69,6 +91,18 @@ class GPTService:
             self._initialize_client()
         else:
             logger.warning("GPT 서비스가 사용 불가능한 상태입니다.")
+
+    def _load_prompt_templates_from_yaml(self) -> Dict[str, Any]:
+        """YAML 파일에서 프롬프트 템플릿 로드"""
+        try:
+            with open(self.gpt_prompts_path, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f)
+
+            return yaml_data
+
+        except Exception as e:
+            logger.error(f"YAML 프롬프트 템플릿 로드 실패: {e}")
+            raise
 
     def _initialize_client(self):
         """OpenAI 클라이언트 초기화"""
@@ -199,22 +233,17 @@ class GPTService:
     ) -> Dict[str, Any]:
         """큐레이터 전환을 위한 안내 질문 생성"""
 
-        system_message = """You are a therapeutic transition guide specializing in helping users move from personal reflection to receiving supportive guidance.
+        system_message = self.prompt_templates["system_message_templates"][
+            "transition_guidance"
+        ]
 
-Your task is to create a warm, encouraging transition message that:
-1. Acknowledges their emotional journey
-2. References their guestbook title meaningfully  
-3. Builds anticipation for personalized curator support
-4. Uses encouraging, supportive language
-5. Keeps the message under 150 words
-
-Focus on validation, encouragement, and smooth transition to closure."""
-
-        user_message = f"""Create a transition message for a user who has:
-- Titled their emotional guestbook: "{guestbook_title}"
-- Explored these emotions: {', '.join(emotion_keywords)}
-
-Generate a message that helps them transition to receiving personalized curator support."""
+        user_template = self.prompt_templates["user_message_templates"][
+            "transition_guidance"
+        ]
+        user_message = user_template.format(
+            guestbook_title=guestbook_title,
+            emotion_keywords=", ".join(emotion_keywords),
+        )
 
         messages = [
             {"role": "system", "content": system_message},
@@ -252,42 +281,11 @@ Generate a message that helps them transition to receiving personalized curator 
     ) -> Dict[str, Any]:
         """일기 텍스트의 감정 분석"""
 
-        # 시스템 메시지 구성
-        system_message = """You are an expert emotion analysis AI specializing in therapeutic applications.
-
-Your task is to analyze diary text and extract:
-1. Emotional keywords (3-5 main emotions)
-2. VAD scores (Valence, Arousal, Dominance on scale 0-1)
-3. Confidence level of the analysis
-
-Guidelines:
-- Focus on constructive emotional understanding
-- Consider cultural context and therapeutic value
-- Provide accurate VAD psychological scores
-- Use clear, therapeutic language for emotions
-
-Response format (JSON):
-{
-    "keywords": ["emotion1", "emotion2", "emotion3"],
-    "vad_scores": [valence, arousal, dominance],
-    "confidence": 0.85,
-    "primary_emotion": "main_emotion",
-    "emotional_intensity": "low/medium/high"
-}"""
-
-        # 사용자 메시지 구성
-        user_message = f"""Analyze the emotional content of this diary entry:
-
-DIARY TEXT: "{diary_text}"
-
-Please provide a comprehensive emotional analysis including:
-1. 3-5 key emotional keywords in English
-2. VAD scores (Valence: positive/negative, Arousal: calm/excited, Dominance: controlled/overwhelmed)
-3. Your confidence in this analysis
-4. The primary emotion
-5. Overall emotional intensity
-
-Provide the analysis in the specified JSON format."""
+        # YAML에서 메시지 템플릿 가져오기
+        system_message = self.prompt_templates["system_message_templates"]["emotion_analysis"]
+        
+        user_template = self.prompt_templates["user_message_templates"]["emotion_analysis"]
+        user_message = user_template.format(diary_text=diary_text)
 
         # GPT API 호출
         messages = [
@@ -353,19 +351,8 @@ Provide the analysis in the specified JSON format."""
                     logger.info(f"캐시된 응답 반환 ({purpose})")
                     return cached_item["response"]
 
-        # OpenAI 클라이언트가 없으면 시뮬레이션 모드 사용 (감정 분석만)
+        # OpenAI 클라이언트가 없으면 오류 반환
         if not OPENAI_AVAILABLE or not self.client:
-            if purpose == "emotion_analysis":
-                logger.info("OpenAI API 미사용으로 감정 분석 시뮬레이션 모드 사용")
-                return {
-                    "success": True,
-                    "content": self._generate_simulated_emotion_analysis(),
-                    "token_usage": {"prompt_tokens": 50, "completion_tokens": 100, "total_tokens": 150},
-                    "processing_time": 0.5,
-                    "model": "simulation",
-                    "finish_reason": "stop",
-                }
-            
             return {
                 "success": False,
                 "error": "OpenAI API not available - please check configuration",
@@ -466,27 +453,12 @@ Provide the analysis in the specified JSON format."""
     ) -> str:
         """프롬프트 엔지니어링용 시스템 메시지 생성"""
 
-        style_guidance = {
-            "avoidant": "gentle, protective, metaphorical",
-            "confrontational": "direct, authentic, honest",
-            "balanced": "thoughtful, nuanced, harmonious",
-        }.get(coping_style, "thoughtful, nuanced, harmonious")
+        # YAML에서 프롬프트 엔지니어링 시스템 메시지 가져오기
+        prompt_data = self.prompt_templates["prompt_engineering"]
+        base_message = prompt_data[coping_style]["system_message"]
 
-        return f"""You are an expert AI image prompt engineer specializing in therapeutic art generation.
-
-Transform diary entries into artistic image prompts that are:
-- Emotionally supportive and healing
-- Visually beautiful and contemplative
-- Appropriate for therapeutic contexts
-- {style_guidance} in tone
-
-Guidelines:
-- Create prompts under 100 words
-- Use artistic and poetic language
-- Include style, mood, and composition elements
-- Avoid literal representation of trauma
-- Focus on hope, growth, and beauty
-- Consider the emotional healing journey
+        # 추가 컨텍스트 정보 첨부
+        return f"""{base_message}
 
 Visual preferences: {visual_preferences}
 Coping style: {coping_style}"""
@@ -495,74 +467,40 @@ Coping style: {coping_style}"""
         self, diary_text: str, emotion_keywords: List[str]
     ) -> str:
         """프롬프트 엔지니어링용 사용자 메시지 생성"""
-        return f"""Transform this emotional diary entry into a beautiful, therapeutic image prompt:
-
-DIARY ENTRY: "{diary_text}"
-
-EMOTIONS IDENTIFIED: {', '.join(emotion_keywords)}
-
-Create an artistic image prompt that:
-1. Honors these emotions respectfully
-2. Transforms them into visual poetry
-3. Promotes healing and reflection
-4. Uses artistic terminology and style references
-5. Focuses on beauty, hope, and growth
-
-Generate only the image prompt, no explanations."""
+        template = self.prompt_templates["user_message_templates"]["prompt_engineering"]
+        return template.format(
+            diary_text=diary_text, emotion_keywords=", ".join(emotion_keywords)
+        )
 
     def _create_curator_system_message(
         self, coping_style: str, personalization_context: Dict[str, Any]
     ) -> str:
         """큐레이터 메시지용 시스템 메시지 생성"""
 
-        style_guidance = {
-            "avoidant": "gentle, protective, metaphorical",
-            "confrontational": "direct, authentic, honest",
-            "balanced": "thoughtful, nuanced, harmonious",
-        }.get(coping_style, "thoughtful, nuanced, harmonious")
+        # YAML에서 큐레이터 시스템 메시지 가져오기
+        curator_data = self.prompt_templates["curator_messages"]
+        base_message = curator_data[coping_style]["system_message"]
 
-        return f"""You are Luna, a compassionate art curator specializing in therapeutic digital experiences.
-
-Create personalized messages that:
-- Acknowledge the user's emotional journey with empathy
-- Reference their artwork and guestbook meaningfully
-- Provide encouragement and validation
-- Use {style_guidance} language
-- Keep messages warm but professional
-- Focus on growth, courage, and healing
-- End with a warm signature as "Luna, Art Curator"
-
-Structure your response with:
-1. Opening acknowledgment
-2. Recognition of their courage
-3. Personal reflection on their journey
-4. Encouraging guidance
-5. Warm closing with signature
+        # 추가 컨텍스트 정보 첨부
+        return f"""{base_message}
 
 Personalization context: {personalization_context}
-Tone: {style_guidance}"""
+Tone: {curator_data[coping_style].get('tone', 'balanced')}"""
 
     def _create_curator_user_message(
         self, user_profile: Dict[str, Any], gallery_item: Dict[str, Any]
     ) -> str:
         """큐레이터 메시지용 사용자 메시지 생성"""
-        return f"""Create a personalized curator message for this user's emotional art journey:
-
-USER PROFILE:
-- User nickname: {user_profile.get('user_id', 'friend')}
-- Coping style: {user_profile.get('coping_style', 'balanced')}
-- Previous interactions: {user_profile.get('interaction_history', 'New user')}
-
-GALLERY ITEM:
-- Original diary: "{gallery_item.get('diary_text', '')}"
-- Emotions explored: {gallery_item.get('emotion_keywords', [])}
-- Guestbook title: "{gallery_item.get('guestbook_title', '')}"
-- Guestbook tags: {gallery_item.get('guestbook_tags', [])}
-
-Create a meaningful, personalized curator message that:
-1. Addresses the user by their nickname when appropriate
-2. Acknowledges their specific journey and provides therapeutic support
-3. Ends with "With warmth and support,\nLuna\nArt Curator"""""
+        template = self.prompt_templates["user_message_templates"]["curator_message"]
+        return template.format(
+            user_nickname=user_profile.get("user_id", "friend"),
+            coping_style=user_profile.get("coping_style", "balanced"),
+            interaction_history=user_profile.get("interaction_history", "New user"),
+            diary_text=gallery_item.get("diary_text", ""),
+            emotion_keywords=gallery_item.get("emotion_keywords", []),
+            guestbook_title=gallery_item.get("guestbook_title", ""),
+            guestbook_tags=gallery_item.get("guestbook_tags", []),
+        )
 
     def _structure_curator_message(
         self,
@@ -646,15 +584,6 @@ Create a meaningful, personalized curator message that:
         self.cache.clear()
         logger.info("GPT 응답 캐시가 초기화되었습니다.")
 
-    def _generate_simulated_emotion_analysis(self) -> str:
-        """시뮬레이션 감정 분석 JSON 생성"""
-        return """{
-    "keywords": ["contentment", "satisfaction", "joy"],
-    "vad_scores": [0.7, 0.5, 0.6],
-    "confidence": 0.85,
-    "primary_emotion": "contentment",
-    "emotional_intensity": "medium"
-}"""
 
     def get_system_status(self) -> Dict[str, Any]:
         """시스템 상태 확인"""
@@ -662,7 +591,6 @@ Create a meaningful, personalized curator message that:
             "generation_method": "gpt_only",
             "fallback_available": False,
             "hardcoded_templates": False,
-            "simulation_mode": not (OPENAI_AVAILABLE and self.client is not None),
             "gpt_integration": "complete",
             "language_consistency": "english_only",
             "error_handling": "graceful_failure",
