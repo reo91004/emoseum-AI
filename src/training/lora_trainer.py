@@ -167,7 +167,7 @@ class PersonalizedLoRATrainer:
                     training_data.append(training_sample)
 
         logger.info(
-            f"GPT 기반 LoRA 훈련 데이터 준비 완료: {len(training_data)}개 샘플 (총 {len(gallery_items)}개 중)"
+            f"LoRA 훈련 데이터 준비 완료: {len(training_data)}개 샘플 (총 {len(gallery_items)}개 중)"
         )
         return training_data
 
@@ -627,7 +627,7 @@ class PersonalizedLoRATrainer:
                 },
             }
 
-            logger.info(f"사용자 {user_id}의 GPT 기반 LoRA 모델 훈련 완료: {save_path}")
+            logger.info(f"사용자 {user_id}의 LoRA 모델 훈련 완료: {save_path}")
             return result
 
         except Exception as e:
@@ -744,7 +744,7 @@ class PersonalizedLoRATrainer:
         import random
         import time
 
-        logger.info(f"사용자 {user_id}의 GPT 기반 LoRA 훈련을 시뮬레이션합니다...")
+        logger.info(f"사용자 {user_id}의 LoRA 훈련을 시뮬레이션합니다...")
 
         # 훈련 시뮬레이션
         simulated_loss = random.uniform(0.1, 0.3)

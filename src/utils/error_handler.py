@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 
 class GPTErrorHandler:
-    """GPT 실패 시 명확한 에러 처리 (폴백 없음)"""
+    """명확한 에러 처리"""
 
     @staticmethod
     def handle_gpt_failure(
@@ -69,7 +69,7 @@ class GPTErrorHandler:
             "recommended_action": response_template["action"],
             "retry_recommended": response_template["retry_recommended"],
             "context": context,
-            "fallback_used": False,  # 폴백 시스템 없음을 명시
+            "fallback_used": False,
             "timestamp": context.get("timestamp", "unknown"),
         }
 

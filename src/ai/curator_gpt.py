@@ -8,13 +8,13 @@ logger = logging.getLogger(__name__)
 
 
 class CuratorGPT:
-    """GPT 기반 큐레이터 메시지 생성"""
+    """큐레이터 메시지 생성"""
 
     def __init__(self, gpt_service, safety_validator):
         self.gpt_service = gpt_service
         self.safety_validator = safety_validator
 
-        logger.info("CuratorGPT 초기화 완료 (폴백 없음)")
+        logger.info("CuratorGPT 초기화 완료")
 
     def get_coping_style_guidelines(self, coping_style: str) -> str:
         """대처 스타일별 가이드라인"""
@@ -81,7 +81,7 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
         gallery_item: Any,
         personalization_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """순수 GPT 기반 큐레이터 메시지 생성"""
+        """큐레이터 메시지 생성"""
 
         try:
             # 1. 개인화 컨텍스트 구성
@@ -444,7 +444,7 @@ Tone: Wise, balanced, thoughtful, respectful, encouraging""",
         """사용자별 성능 메트릭 (기본 구현)"""
         return {
             "user_id": user_id,
-            "fallback_usage_rate": 0.0,  # 폴백 없음
+            "fallback_usage_rate": 0.0,
             "avg_generation_time": 2.5,
             "avg_quality_score": 0.85,
             "avg_personalization_score": 0.80,

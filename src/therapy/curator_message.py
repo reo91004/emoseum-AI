@@ -24,7 +24,7 @@ class CuratorMessageSystem:
     def create_personalized_message(
         self, user, gallery_item, message_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """GPT 기반 개인화된 큐레이터 메시지 생성"""
+        """개인화된 큐레이터 메시지 생성"""
 
         if not self.curator_gpt:
             raise RuntimeError(
@@ -32,7 +32,7 @@ class CuratorMessageSystem:
             )
 
         logger.info(
-            f"GPT 기반 큐레이터 메시지 생성 시작: 사용자 {user.user_id}, 아이템 {gallery_item.item_id}"
+            f"큐레이터 메시지 생성 시작: 사용자 {user.user_id}, 아이템 {gallery_item.item_id}"
         )
 
         # GPT 큐레이터로 개인화된 메시지 생성
@@ -64,17 +64,14 @@ class CuratorMessageSystem:
             )
 
         # 생성 완료 로깅
-        logger.info(f"GPT 기반 큐레이터 메시지 생성 완료: 사용자 {user.user_id}")
+        logger.info(f"큐레이터 메시지 생성 완료: 사용자 {user.user_id}")
 
         return result
 
     def get_message_variations(
         self, base_message: Dict[str, Any], variation_count: int = 3
     ) -> List[Dict[str, Any]]:
-        """GPT 기반 메시지 변형 생성 (A/B 테스트용)
-
-        기존 템플릿 기반 변형을 GPT 기반 변형으로 대체
-        """
+        """메시지 변형 생성 (A/B 테스트용)"""
 
         if not self.curator_gpt:
             logger.warning(

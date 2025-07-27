@@ -250,7 +250,7 @@ Generate a message that helps them transition to receiving personalized curator 
         user_id: str = "anonymous",
         **kwargs,
     ) -> Dict[str, Any]:
-        """일기 텍스트의 감정 분석 (폴백 없음)"""
+        """일기 텍스트의 감정 분석"""
 
         # 시스템 메시지 구성
         system_message = """You are an expert emotion analysis AI specializing in therapeutic applications.
@@ -305,7 +305,7 @@ Provide the analysis in the specified JSON format."""
 
         if response["success"]:
             try:
-                # JSON 파싱 시도 (폴백 없음)
+                # JSON 파싱 시도
                 analysis_data = self._parse_emotion_analysis_strict(response["content"])
 
                 return {
@@ -342,7 +342,7 @@ Provide the analysis in the specified JSON format."""
         purpose: str = "general",
         user_id: str = "anonymous",
     ) -> Dict[str, Any]:
-        """OpenAI API 호출 (폴백 없음)"""
+        """OpenAI API 호출"""
 
         # 캐시 확인
         if self.cache_enabled:
@@ -600,7 +600,7 @@ Create a meaningful, personalized curator message that:
         return processed
 
     def _parse_emotion_analysis_strict(self, response_content: str) -> Dict[str, Any]:
-        """감정 분석 응답 엄격 파싱 (폴백 없음)"""
+        """감정 분석 응답 엄격 파싱"""
         try:
             # JSON 파싱만 시도, 실패 시 예외 발생
             if not response_content.strip().startswith("{"):

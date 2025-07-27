@@ -23,7 +23,7 @@ except ImportError:
 
 
 class DRaFTRewardModel:
-    """DRaFT+ 보상 모델 (GPT 기반 강화)"""
+    """DRaFT+ 보상 모델"""
 
     def __init__(self, device: torch.device):
         self.device = device
@@ -207,7 +207,7 @@ class DRaFTPlusTrainer:
 
             self.pipeline = self.pipeline.to(self.device)
 
-            # GPT 기반 보상 모델 초기화
+            # 보상 모델 초기화
             self.reward_model = DRaFTRewardModel(self.device)
 
             logger.info("DRaFT+ 컴포넌트 초기화 완료")
@@ -271,7 +271,7 @@ class DRaFTPlusTrainer:
                 training_data.append(training_sample)
 
         logger.info(
-            f"GPT 기반 DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플"
+            f"DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플"
         )
         return training_data
 
@@ -817,7 +817,7 @@ class DRaFTPlusTrainer:
             }
 
             logger.info(
-                f"사용자 {user_id}의 GPT 기반 DRaFT+ 모델 훈련 완료: {save_path}"
+                f"사용자 {user_id}의 DRaFT+ 모델 훈련 완료: {save_path}"
             )
             return result
 
@@ -994,7 +994,7 @@ class DRaFTPlusTrainer:
         # 기본 MSE 손실
         mse_loss = nn.functional.mse_loss(noise_pred, noise, reduction="mean")
 
-        # GPT 기반 보상 계산
+        # 보상 계산
         with torch.no_grad():
             # 이미지 특성을 간단히 노이즈 예측에서 추출
             image_features = noise_pred.flatten().unsqueeze(0)
@@ -1032,7 +1032,7 @@ class DRaFTPlusTrainer:
     def _simulate_draft_training(self, user_id: str, data_size: int) -> Dict[str, Any]:
         """DRaFT+ 훈련 시뮬레이션"""
 
-        logger.info(f"사용자 {user_id}의 GPT 기반 DRaFT+ 훈련을 시뮬레이션합니다...")
+        logger.info(f"사용자 {user_id}의 DRaFT+ 훈련을 시뮬레이션합니다...")
 
         import time
 

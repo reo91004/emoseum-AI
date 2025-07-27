@@ -452,7 +452,7 @@ class GalleryManager:
                 "[]",  # 빈 message_reactions
                 datetime.now().isoformat(),
                 coping_style,
-                True,  # gpt_prompt_used (GPT 전환)
+                True,  # gpt_prompt_used
                 gpt_prompt_tokens,
                 True,  # gpt_curator_used (미래에 GPT로 생성될 예정)
                 0,  # gpt_curator_tokens (아직 생성안됨)
@@ -469,7 +469,7 @@ class GalleryManager:
         # 통계 업데이트
         self._update_user_stats(user_id)
 
-        logger.info(f"새 미술관 아이템이 생성되었습니다 (GPT 기반): {item_id}")
+        logger.info(f"새 미술관 아이템이 생성되었습니다: {item_id}")
         return item_id
 
     def complete_guestbook(
@@ -537,7 +537,7 @@ class GalleryManager:
         if success:
             # 통계 업데이트
             self._update_user_stats(item.user_id)
-            logger.info(f"GPT 기반 큐레이터 메시지가 추가되었습니다: 아이템 {item_id}")
+            logger.info(f"큐레이터 메시지가 추가되었습니다: 아이템 {item_id})")
 
         return success
 
@@ -1132,7 +1132,7 @@ class GalleryManager:
         insights = []
 
         if len(vad_data) < 2:
-            return ["더 많은 GPT 기반 데이터가 쌓이면 성장 패턴을 분석할 수 있습니다."]
+            return ["더 많은 데이터가 쌓이면 성장 패턴을 분석할 수 있습니다."]
 
         # 최근과 초기 비교
         recent_valence = sum(d[0] for d in vad_data[-3:]) / min(3, len(vad_data))
@@ -1145,7 +1145,7 @@ class GalleryManager:
         elif recent_valence < initial_valence - 0.1:
             insights.append("최근 감정적 어려움이 있는 것 같습니다.")
         else:
-            insights.append("GPT 기반 감정 상태가 안정적으로 유지되고 있습니다.")
+            insights.append("감정 상태가 안정적으로 유지되고 있습니다.")
 
         # 변동성 분석
         valence_var = sum((d[0] - recent_valence) ** 2 for d in vad_data) / len(

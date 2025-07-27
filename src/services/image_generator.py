@@ -99,7 +99,7 @@ class ImageGenerator:
         guidance_scale: float = 7.5,
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """이미지 생성 (폴백 없음)"""
+        """이미지 생성"""
 
         generation_start = datetime.now()
 

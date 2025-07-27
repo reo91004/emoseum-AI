@@ -31,7 +31,7 @@ class PromptArchitect:
         visual_preferences: Dict[str, Any],
         user_id: str = "anonymous",
     ) -> str:
-        """GPT 기반 감정 반영 프롬프트 생성 (ACT 2단계: Acceptance)"""
+        """감정 반영 프롬프트 생성 (ACT 2단계: Acceptance)"""
 
         if not self.prompt_engineer:
             raise RuntimeError(
@@ -43,7 +43,7 @@ class PromptArchitect:
                 "일기 텍스트가 설정되지 않았습니다. set_diary_context()를 먼저 호출하세요."
             )
 
-        logger.info(f"GPT 기반 Reflection 프롬프트 생성 시작 ({coping_style} 스타일)")
+        logger.info(f"Reflection 프롬프트 생성 시작 ({coping_style} 스타일)")
 
         # GPT 프롬프트 엔지니어로 프롬프트 생성
         result = self.prompt_engineer.enhance_diary_to_prompt(
@@ -62,7 +62,7 @@ class PromptArchitect:
 
         generated_prompt = result["prompt"]
         logger.info(
-            f"GPT 기반 Reflection 프롬프트 생성 완료: {len(generated_prompt)} 문자"
+            f"Reflection 프롬프트 생성 완료: {len(generated_prompt)} 문자"
         )
 
         return generated_prompt
@@ -73,12 +73,12 @@ class PromptArchitect:
         emotion_keywords: List[str],
         user_id: str = "anonymous",
     ) -> str:
-        """GPT 기반 큐레이터 전환 안내 질문 생성"""
+        """큐레이터 전환 안내 질문 생성"""
 
         if not self.prompt_engineer:
             raise RuntimeError("PromptEngineer가 주입되지 않았습니다.")
 
-        logger.info(f"GPT 기반 큐레이터 전환 안내 질문 생성 시작: {guestbook_title}")
+        logger.info(f"큐레이터 전환 안내 질문 생성 시작: {guestbook_title}")
 
         # GPT에 전환 질문 생성 요청
         result = self.prompt_engineer.generate_transition_guidance(
@@ -88,8 +88,8 @@ class PromptArchitect:
         )
 
         if not result.get("success", False):
-            logger.error(f"GPT 전환 안내 생성 실패: {result.get('error')}")
-            raise RuntimeError(f"GPT 전환 안내 생성 실패: {result.get('error')}")
+            logger.error(f"전환 안내 생성 실패: {result.get('error')}")
+            raise RuntimeError(f"전환 안내 생성 실패: {result.get('error')}")
 
         logger.info(f"큐레이터 전환 안내 질문 생성 완료: {guestbook_title}")
         return result["content"]

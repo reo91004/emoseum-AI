@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class CopingStyleRules:
-    """대처 스타일 설정 관리 (GPT에서 직접 처리)"""
+    """대처 스타일 설정 관리"""
 
     def __init__(self, rules_file: Optional[str] = None):
         self.rules_file = Path(rules_file) if rules_file else None
@@ -44,7 +44,7 @@ class CopingStyleRules:
             },
         }
 
-        logger.info("CopingStyleRules 초기화 완료 - GPT 기반 설정 관리")
+        logger.info("CopingStyleRules 초기화 완료")
 
     def get_style_guidance(self, coping_style: str) -> str:
         """GPT 시스템 메시지에 포함할 스타일 가이드라인 반환"""

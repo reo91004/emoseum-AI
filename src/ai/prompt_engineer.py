@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 class PromptEngineer:
-    """일기 내용을 GPT 기반 이미지 프롬프트로 변환"""
+    """일기 내용을 이미지 프롬프트로 변환"""
 
     def __init__(self, gpt_service):
         self.gpt_service = gpt_service
@@ -106,7 +106,7 @@ Guidelines:
             ],
         }
 
-        logger.info("PromptEngineer 초기화 완료 (GPT 기반)")
+        logger.info("PromptEngineer 초기화 완료")
 
     def enhance_diary_to_prompt(
         self,
@@ -116,7 +116,7 @@ Guidelines:
         visual_preferences: Dict[str, Any],
         user_id: str = "anonymous",
     ) -> Dict[str, Any]:
-        """일기 내용을 GPT 기반 이미지 프롬프트로 변환 (메인 메서드)"""
+        """일기 내용을 이미지 프롬프트로 변환 (메인 메서드)"""
 
         try:
             # 1. 입력 데이터 검증
@@ -481,11 +481,11 @@ Guidelines:
         emotion_keywords: List[str],
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """GPT 기반 큐레이터 전환 안내 질문 생성"""
+        """큐레이터 전환 안내 질문 생성"""
 
         try:
             logger.info(
-                f"GPT 기반 큐레이터 전환 안내 질문 생성 시작: {guestbook_title}"
+                f"큐레이터 전환 안내 질문 생성 시작: {guestbook_title}"
             )
 
             # GPT 서비스를 통해 전환 안내 질문 생성
@@ -498,7 +498,7 @@ Guidelines:
             )
 
             if not gpt_response.get("success", False):
-                logger.error(f"GPT 전환 안내 생성 실패: {gpt_response.get('error')}")
+                logger.error(f"전환 안내 생성 실패: {gpt_response.get('error')}")
                 return {
                     "success": False,
                     "error": gpt_response.get("error", "Unknown error"),
