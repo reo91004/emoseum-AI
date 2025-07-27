@@ -508,21 +508,47 @@ Tone: {curator_data[coping_style].get('tone', 'balanced')}"""
         user_profile: Dict[str, Any],
         gallery_item: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """큐레이터 메시지 구조화"""
-        # 간단한 구조화 로직 (더 정교한 파싱 필요 시 개선)
-        sections = raw_content.split("\n\n")
+        """큐레이터 메시지 구조화 - YAML 설정 기반"""
+        # YAML에서 메시지 구조 설정 가져오기
+        message_structure = self.prompt_templates.get("message_structure", {})
+        five_section_format = message_structure.get("five_section_format", {})
+        response_format = message_structure.get("response_format", {})
+        
+        # 구조화 방법 결정
+        delimiter = response_format.get("section_delimiter", "\n\n")
+        expected_sections = response_format.get("expected_sections", 5)
+        parsing_method = response_format.get("parsing_method", "paragraph_split")
+        
+        if parsing_method == "paragraph_split":
+            sections = raw_content.split(delimiter)
+        else:
+            # 폴백 방법: 단일 블록으로 처리
+            sections = [raw_content]
 
-        return {
+        # 섹션 매핑 (YAML에서 정의된 구조 순서대로)
+        section_names = list(five_section_format.keys()) if five_section_format else [
+            "opening", "recognition", "personal_note", "guidance", "closing"
+        ]
+        
+        result = {
             "full_message": raw_content,
-            "opening": sections[0] if len(sections) > 0 else raw_content[:100],
-            "recognition": sections[1] if len(sections) > 1 else "",
-            "personal_note": sections[2] if len(sections) > 2 else "",
-            "guidance": sections[3] if len(sections) > 3 else "",
-            "closing": sections[-1] if len(sections) > 4 else "",
             "user_id": user_profile.get("user_id", "anonymous"),
             "guestbook_title": gallery_item.get("guestbook_title", ""),
             "emotion_keywords": gallery_item.get("emotion_keywords", []),
         }
+        
+        # 구조화된 섹션 매핑
+        for i, section_name in enumerate(section_names):
+            if i < len(sections):
+                result[section_name] = sections[i].strip()
+            else:
+                result[section_name] = ""
+        
+        # 마지막 섹션이 closing인 경우 특별 처리
+        if len(sections) > len(section_names):
+            result["closing"] = sections[-1].strip()
+            
+        return result
 
     def _post_process_prompt(
         self, prompt: str, visual_preferences: Dict[str, Any]

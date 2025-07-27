@@ -276,6 +276,30 @@ message_structure:
       length: "1 sentence"
       feeling: "Warmth and availability"
 
+  # 응답 형식 정의
+  response_format:
+    type: "structured_text"
+    section_delimiter: "\n\n"
+    expected_sections: 5
+    parsing_method: "paragraph_split"
+    fallback_method: "single_block"
+
+# 비상용 안전 메시지 템플릿
+emergency_messages:
+  safety_fallback:
+    opening: "Thank you for sharing your emotional journey with us."
+    recognition: "Your courage in exploring your feelings is truly appreciated."
+    personal_note: "This moment of reflection is an important step in your growth."
+    guidance: "Continue to be gentle with yourself as you navigate these emotions."
+    closing: "With warmth and support,\nLuna\nArt Curator"
+  
+  general_error:
+    opening: "We appreciate you taking time to reflect today."
+    recognition: "Your willingness to engage with your emotions shows strength."
+    personal_note: "Every step in emotional awareness is meaningful."
+    guidance: "Take this time to honor your feelings and experiences."
+    closing: "With care and understanding,\nLuna\nArt Curator"
+
 # 시각적 요소 매핑
 visual_mappings:
   style_mappings:

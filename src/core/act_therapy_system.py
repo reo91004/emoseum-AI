@@ -100,6 +100,7 @@ class ACTTherapySystem:
 
         try:
             self.prompt_architect.set_prompt_engineer(self.prompt_engineer)
+            self.prompt_architect.set_safety_validator(self.safety_validator)
             self.curator_message_system.set_curator_gpt(self.curator_gpt)
             logger.info("모든 GPT 서비스 주입이 완료되었습니다.")
 

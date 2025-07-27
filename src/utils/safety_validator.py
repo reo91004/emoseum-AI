@@ -74,16 +74,26 @@ class SafetyValidator:
                 therapeutic = yaml_data["therapeutic_quality"]
                 self.therapeutic_quality_indicators = {}
 
-                for category in ["positive_indicators", "empathetic_indicators"]:
-                    if category in therapeutic:
-                        # YAML의 중첩 구조를 평면화
-                        self.therapeutic_quality_indicators[
-                            category.replace("_indicators", "")
-                        ] = []
-                        for subcategory in therapeutic[category].values():
-                            self.therapeutic_quality_indicators[
-                                category.replace("_indicators", "")
-                            ].extend(subcategory)
+                # positive_indicators 처리
+                if "positive_indicators" in therapeutic:
+                    self.therapeutic_quality_indicators["positive"] = []
+                    for subcategory in therapeutic["positive_indicators"].values():
+                        self.therapeutic_quality_indicators["positive"].extend(subcategory)
+                
+                # empathetic_indicators 처리
+                if "empathetic_indicators" in therapeutic:
+                    self.therapeutic_quality_indicators["empathetic"] = []
+                    for subcategory in therapeutic["empathetic_indicators"].values():
+                        self.therapeutic_quality_indicators["empathetic"].extend(subcategory)
+                
+                # empowerment는 positive_indicators 안의 하위 카테고리로 별도 처리
+                if "positive_indicators" in therapeutic and "empowerment" in therapeutic["positive_indicators"]:
+                    self.therapeutic_quality_indicators["empowering"] = therapeutic["positive_indicators"]["empowerment"]
+                
+                # 기본값 설정 (키가 없을 경우)
+                for key in ["positive", "empathetic", "empowering"]:
+                    if key not in self.therapeutic_quality_indicators:
+                        self.therapeutic_quality_indicators[key] = []
 
             # professional_referral_triggers 로드
             if "professional_referral" in yaml_data:
@@ -95,6 +105,11 @@ class SafetyValidator:
                         self.professional_referral_triggers[level] = referral_data[
                             level
                         ]["keywords"]
+                
+                # 기본값 설정 (키가 없을 경우)
+                for level in ["immediate", "urgent", "recommended"]:
+                    if level not in self.professional_referral_triggers:
+                        self.professional_referral_triggers[level] = []
 
         except Exception as e:
             logger.error(f"추가 YAML 설정 로드 실패: {e}")
@@ -267,19 +282,19 @@ class SafetyValidator:
         # 긍정적 지표 계산
         positive_count = sum(
             1
-            for indicator in self.therapeutic_quality_indicators["positive"]
+            for indicator in self.therapeutic_quality_indicators.get("positive", [])
             if indicator in text_lower
         )
 
         empathetic_count = sum(
             1
-            for indicator in self.therapeutic_quality_indicators["empathetic"]
+            for indicator in self.therapeutic_quality_indicators.get("empathetic", [])
             if indicator in text_lower
         )
 
         empowering_count = sum(
             1
-            for indicator in self.therapeutic_quality_indicators["empowering"]
+            for indicator in self.therapeutic_quality_indicators.get("empowering", [])
             if indicator in text_lower
         )
 
@@ -438,19 +453,19 @@ class SafetyValidator:
         text_lower = response.lower()
 
         # 즉시 상담 필요
-        for trigger in self.professional_referral_triggers["immediate"]:
+        for trigger in self.professional_referral_triggers.get("immediate", []):
             if trigger in text_lower:
                 return "immediate"
 
         # 긴급 상담 권유
-        for trigger in self.professional_referral_triggers["urgent"]:
+        for trigger in self.professional_referral_triggers.get("urgent", []):
             if trigger in text_lower:
                 return "urgent"
 
         # 상담 권장
         urgent_count = sum(
             1
-            for trigger in self.professional_referral_triggers["recommended"]
+            for trigger in self.professional_referral_triggers.get("recommended", [])
             if trigger in text_lower
         )
 

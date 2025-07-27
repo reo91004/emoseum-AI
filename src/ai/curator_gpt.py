@@ -52,6 +52,31 @@ class CuratorGPT:
             logger.error(f"YAML 큐레이터 가이드라인 로드 실패: {e}")
             raise
 
+    def _get_emergency_message(self, message_type: str = "safety_fallback") -> Dict[str, str]:
+        """YAML에서 비상용 메시지 템플릿 가져오기"""
+        try:
+            with open(self.gpt_prompts_path, "r", encoding="utf-8") as f:
+                yaml_data = yaml.safe_load(f)
+            
+            emergency_messages = yaml_data.get("emergency_messages", {})
+            return emergency_messages.get(message_type, emergency_messages.get("safety_fallback", {
+                "opening": "Thank you for your reflection.",
+                "recognition": "Your journey is valued.",
+                "personal_note": "This moment matters.",
+                "guidance": "Continue with care.",
+                "closing": "With support,\nLuna\nArt Curator"
+            }))
+        except Exception as e:
+            logger.error(f"비상용 메시지 로드 실패: {e}")
+            # 최후의 폴백
+            return {
+                "opening": "Thank you for your reflection.",
+                "recognition": "Your journey is valued.",
+                "personal_note": "This moment matters.",
+                "guidance": "Continue with care.",
+                "closing": "With support,\nLuna\nArt Curator"
+            }
+
     def get_coping_style_guidelines(self, coping_style: str) -> str:
         """대처 스타일별 가이드라인"""
 
@@ -107,14 +132,8 @@ class CuratorGPT:
                 logger.warning(
                     f"생성된 큐레이터 메시지가 안전하지 않음: {safety_check.get('issues', [])}"
                 )
-                # 안전성 실패 시에는 템플릿 구조 반환
-                emergency_content = {
-                    "opening": "Thank you for sharing your emotional journey with us.",
-                    "recognition": "Your courage in exploring your feelings is truly appreciated.",
-                    "personal_note": "This moment of reflection is an important step in your growth.",
-                    "guidance": "Continue to be gentle with yourself as you navigate these emotions.",
-                    "closing": "With warmth and support,\nLuna\nArt Curator",
-                }
+                # 안전성 실패 시에는 YAML에서 비상용 메시지 템플릿 사용
+                emergency_content = self._get_emergency_message("safety_fallback")
 
                 return {
                     "message_id": f"emergency_{datetime.now().strftime('%Y%m%d_%H%M%S')}",

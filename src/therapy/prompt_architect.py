@@ -9,14 +9,20 @@ logger = logging.getLogger(__name__)
 class PromptArchitect:
     """ACT 기반 프롬프트 생성 시스템"""
 
-    def __init__(self):
+    def __init__(self, safety_validator=None):
         self.prompt_engineer = None  # GPT 프롬프트 엔지니어 주입받을 예정
+        self.safety_validator = safety_validator  # 안전성 검증기 주입
         self.current_diary_text = ""  # 일기 텍스트 저장용
 
     def set_prompt_engineer(self, prompt_engineer):
         """GPT 프롬프트 엔지니어 주입"""
         self.prompt_engineer = prompt_engineer
         logger.info("PromptEngineer가 PromptArchitect에 주입되었습니다.")
+
+    def set_safety_validator(self, safety_validator):
+        """안전성 검증기 주입"""
+        self.safety_validator = safety_validator
+        logger.info("SafetyValidator가 PromptArchitect에 주입되었습니다.")
 
     def set_diary_context(self, diary_text: str):
         """일기 텍스트 컨텍스트 설정"""
@@ -131,39 +137,25 @@ class PromptArchitect:
         return analysis
 
     def validate_prompt_safety(self, prompt: str) -> Dict[str, Any]:
-        """프롬프트 안전성 검증"""
-        safety_issues = []
+        """프롬프트 안전성 검증 - SafetyValidator 사용"""
+        if not self.safety_validator:
+            logger.warning("SafetyValidator가 주입되지 않음. 기본 안전 검증 사용")
+            return {
+                "is_safe": True,
+                "safety_issues": [],
+                "recommendation": "SafetyValidator가 설정되지 않았습니다.",
+                "generation_method": "gpt",
+            }
 
-        # 극단적 부정 키워드 체크
-        extreme_negative_words = [
-            "suicide",
-            "death",
-            "kill",
-            "harm",
-            "violence",
-            "blood",
-            "weapon",
-        ]
-
-        for word in extreme_negative_words:
-            if word in prompt.lower():
-                safety_issues.append(f"극단적 부정 키워드 발견: {word}")
-
-        # 부적절한 성적 내용 체크
-        inappropriate_words = ["sexual", "nude", "naked", "porn", "explicit"]
-
-        for word in inappropriate_words:
-            if word in prompt.lower():
-                safety_issues.append(f"부적절한 내용 발견: {word}")
+        # SafetyValidator를 사용하여 검증
+        validation_result = self.safety_validator.validate_gpt_response(
+            response=prompt, context={"type": "generated_prompt"}
+        )
 
         return {
-            "is_safe": len(safety_issues) == 0,
-            "safety_issues": safety_issues,
-            "recommendation": (
-                "안전한 프롬프트입니다."
-                if len(safety_issues) == 0
-                else "프롬프트 수정이 필요합니다."
-            ),
+            "is_safe": validation_result.get("is_safe", False),
+            "safety_issues": validation_result.get("issues", []),
+            "recommendation": validation_result.get("recommendation", "검증 완료"),
             "generation_method": "gpt",
         }
 
