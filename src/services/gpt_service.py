@@ -562,7 +562,7 @@ GALLERY ITEM:
 Create a meaningful, personalized curator message that:
 1. Addresses the user by their nickname when appropriate
 2. Acknowledges their specific journey and provides therapeutic support
-3. Ends with "With warmth and support,\nLuna\nArt Curator"
+3. Ends with "With warmth and support,\nLuna\nArt Curator"""""
 
     def _structure_curator_message(
         self,
