@@ -1,5 +1,13 @@
 # src/ai/prompt_engineer.py
 
+# ==============================================================================
+# 이 파일은 사용자의 일기 내용, 감정, 대처 스타일을 바탕으로 Stable Diffusion을 위한
+# 이미지 생성 프롬프트를 전문적으로 설계(Engineering)하는 역할을 한다.
+# `src.services.gpt_service.GPTService`를 통해 GPT API를 호출하며,
+# `config/gpt_prompts.yaml`의 'prompt_engineering' 섹션의 가이드라인을 사용하여
+# 치료적이면서도 예술적인 프롬프트를 생성한다.
+# ==============================================================================
+
 import re
 from typing import Dict, List, Tuple, Any, Optional
 import logging

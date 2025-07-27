@@ -1,5 +1,11 @@
 # src/services/image_generator.py
 
+# ==============================================================================
+# 이 파일은 Stable Diffusion 모델을 사용하여 텍스트 프롬프트로부터 이미지를 생성하는 역할을 한다.
+# `diffusers` 라이브러리를 사용하여 모델을 로드하고, `prompt_architect`로부터 전달받은 프롬프트를 기반으로
+# 이미지를 생성한다. 생성된 이미지는 `ACTTherapySystem`을 통해 `gallery_manager`에 저장된다.
+# ==============================================================================
+
 import torch
 from PIL import Image
 import numpy as np

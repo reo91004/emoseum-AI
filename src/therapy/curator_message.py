@@ -1,5 +1,12 @@
 # src/therapy/curator_message.py
 
+# ==============================================================================
+# 이 파일은 ACT(수용전념치료) 이론의 'Closure' 단계를 담당하며, 큐레이터 메시지 생성을 총괄한다.
+# `act_therapy_system`으로부터 요청을 받아, 주입된 `curator_gpt` 모듈을 사용하여
+# 사용자 프로필과 갤러리 아이템에 기반한 개인화된 큐레이터 메시지를 생성하도록 지시한다.
+# 생성된 메시지는 다시 `act_therapy_system`으로 반환되어 사용자에게 전달된다.
+# ==============================================================================
+
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import logging

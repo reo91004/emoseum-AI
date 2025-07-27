@@ -1,5 +1,12 @@
 # src/therapy/prompt_architect.py
 
+# ==============================================================================
+# 이 파일은 ACT(수용전념치료) 이론의 'Acceptance'와 'Defusion' 단계를 담당하며,
+# 이미지 프롬프트와 안내 질문 생성을 총괄한다.
+# `act_therapy_system`으로부터 요청을 받아, 주입된 `prompt_engineer` 모듈을 사용하여
+# 사용자의 감정 데이터에 기반한 Reflection 프롬프트나 Guided Question을 생성하도록 지시한다.
+# ==============================================================================
+
 from typing import Dict, List, Tuple, Any, Optional
 import logging
 

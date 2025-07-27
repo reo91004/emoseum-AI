@@ -1,5 +1,12 @@
 # src/services/gpt_service.py
 
+# ==============================================================================
+# 이 파일은 OpenAI의 GPT API와의 모든 통신을 담당하는 핵심 서비스이다.
+# `prompt_engineer`, `curator_gpt` 등 다른 AI 관련 모듈로부터 요청을 받아,
+# `config/gpt_prompts.yaml`에서 정의된 템플릿을 사용하여 API에 전달할 최종 메시지를 구성하고 API를 호출한다.
+# 또한, `cost_tracker`를 통해 API 사용량과 비용을 기록하는 역할도 수행한다.
+# ==============================================================================
+
 import time
 import json
 import hashlib

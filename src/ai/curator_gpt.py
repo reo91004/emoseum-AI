@@ -1,5 +1,13 @@
 # src/ai/curator_gpt.py
 
+# ==============================================================================
+# 이 파일은 AI 큐레이터 'Luna'의 메시지를 생성하는 역할을 전담한다.
+# `src.services.gpt_service.GPTService`를 사용하여 OpenAI API를 호출하고,
+# `config/gpt_prompts.yaml`의 'curator_messages' 섹션에 정의된 프롬프트 템플릿을 활용하여
+# 사용자의 대처 스타일과 감정 여정 데이터에 기반한 개인화된 큐레이터 메시지를 생성한다.
+# 생성된 메시지는 `src.utils.safety_validator.SafetyValidator`에 의해 안전성 검증을 거친다.
+# ==============================================================================
+
 import logging
 from typing import Dict, List, Optional, Any
 from datetime import datetime
