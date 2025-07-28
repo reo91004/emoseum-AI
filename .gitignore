@@ -30,6 +30,9 @@ models/
 .env
 .env.local
 
+# config
+config/*.yaml
+
 # IDE
 .vscode/
 .idea/
