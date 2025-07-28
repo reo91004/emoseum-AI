@@ -173,22 +173,6 @@ class PromptEngineer:
             logger.error(f"프롬프트 생성 중 오류 발생: {e}")
             return {"success": False, "error": str(e), "prompt": "", "metadata": {}}
 
-    def generate_image_prompt(
-        self,
-        diary_text: str,
-        emotion_keywords: List[str],
-        coping_style: str = "balanced",
-        visual_preferences: Optional[Dict[str, Any]] = None,
-        user_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """별칭 메서드 - enhance_diary_to_prompt와 동일"""
-        return self.enhance_diary_to_prompt(
-            diary_text=diary_text,
-            emotion_keywords=emotion_keywords,
-            coping_style=coping_style,
-            visual_preferences=visual_preferences or {},
-            user_id=user_id or "anonymous",
-        )
 
     def _post_process_prompt(
         self, raw_prompt: str, visual_preferences: Dict[str, Any]
@@ -326,122 +310,7 @@ class PromptEngineer:
 
         return "Some content requires attention. Please review the content."
 
-    def get_style_recommendations(self, coping_style: str) -> Dict[str, Any]:
-        """대처 스타일별 권장사항 제공"""
 
-        recommendations = {
-            "avoidant": {
-                "recommended_keywords": [
-                    "gentle",
-                    "soft",
-                    "peaceful",
-                    "dreamy",
-                    "distant",
-                    "subtle",
-                ],
-                "avoid_keywords": [
-                    "harsh",
-                    "sharp",
-                    "intense",
-                    "bold",
-                    "confrontational",
-                ],
-                "visual_approach": "은유적이고 간접적인 표현 선호",
-                "color_preferences": ["pastel", "warm"],
-                "style_preferences": ["abstract", "painting"],
-            },
-            "confrontational": {
-                "recommended_keywords": [
-                    "bold",
-                    "intense",
-                    "authentic",
-                    "raw",
-                    "direct",
-                    "honest",
-                ],
-                "avoid_keywords": ["soft", "gentle", "hiding", "avoiding", "distant"],
-                "visual_approach": "직접적이고 솔직한 표현 선호",
-                "color_preferences": ["cool", "warm"],
-                "style_preferences": ["photography", "painting"],
-            },
-            "balanced": {
-                "recommended_keywords": [
-                    "balanced",
-                    "harmonious",
-                    "thoughtful",
-                    "nuanced",
-                    "considered",
-                ],
-                "avoid_keywords": ["extreme", "overwhelming", "excessive"],
-                "visual_approach": "균형잡힌 감정 표현",
-                "color_preferences": ["warm", "cool", "pastel"],
-                "style_preferences": ["painting", "photography", "abstract"],
-            },
-        }
-
-        return recommendations.get(coping_style, recommendations["balanced"])
-
-    def analyze_prompt_effectiveness(self, prompt: str) -> Dict[str, Any]:
-        """프롬프트 효과성 분석"""
-
-        analysis = {
-            "word_count": len(prompt.split()),
-            "character_count": len(prompt),
-            "estimated_effectiveness": "medium",
-            "style_indicators": [],
-            "emotion_indicators": [],
-            "technical_quality": "good",
-        }
-
-        prompt_lower = prompt.lower()
-
-        # 스타일 지표 분석
-        style_keywords = [
-            "painting",
-            "photography",
-            "abstract",
-            "realistic",
-            "artistic",
-            "detailed",
-        ]
-        found_styles = [
-            keyword for keyword in style_keywords if keyword in prompt_lower
-        ]
-        analysis["style_indicators"] = found_styles
-
-        # 감정 지표 분석
-        emotion_keywords = [
-            "happy",
-            "sad",
-            "peaceful",
-            "intense",
-            "gentle",
-            "bold",
-            "melancholic",
-            "joyful",
-        ]
-        found_emotions = [
-            keyword for keyword in emotion_keywords if keyword in prompt_lower
-        ]
-        analysis["emotion_indicators"] = found_emotions
-
-        # 효과성 점수 계산
-        effectiveness_score = 0
-        if len(prompt.split()) >= 10:
-            effectiveness_score += 1
-        if found_styles:
-            effectiveness_score += 1
-        if found_emotions:
-            effectiveness_score += 1
-
-        if effectiveness_score >= 3:
-            analysis["estimated_effectiveness"] = "high"
-        elif effectiveness_score >= 2:
-            analysis["estimated_effectiveness"] = "medium"
-        else:
-            analysis["estimated_effectiveness"] = "low"
-
-        return analysis
 
     def generate_transition_guidance(
         self,

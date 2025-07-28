@@ -555,31 +555,6 @@ class SafetyValidator:
             and validation_result["safety_level"] != "critical"
         )
 
-    def get_safety_guidelines(self, coping_style: str = "balanced") -> Dict[str, Any]:
-        """대처 스타일별 안전성 가이드라인 제공"""
-
-        guidelines = {
-            "avoidant": {
-                "communication_approach": "부드럽고 간접적인 표현 사용",
-                "avoid": ["직접적인 대면", "강한 감정 표현", "압박적인 언어"],
-                "encourage": ["점진적 접근", "은유적 표현", "안전한 거리감"],
-                "safety_focus": "감정적 안전감과 보호적 환경 조성",
-            },
-            "confrontational": {
-                "communication_approach": "직접적이고 솔직한 표현 허용",
-                "avoid": ["회피적 언어", "과도한 완곡어법", "감정 무시"],
-                "encourage": ["정직한 감정 표현", "직면적 접근", "현실적 피드백"],
-                "safety_focus": "감정적 정직성과 건설적 대면 지원",
-            },
-            "balanced": {
-                "communication_approach": "상황에 맞는 유연한 접근",
-                "avoid": ["극단적 표현", "일방적 접근", "경직된 반응"],
-                "encourage": ["균형잡힌 관점", "상황별 적응", "성숙한 접근"],
-                "safety_focus": "감정적 균형과 성숙한 성장 지원",
-            },
-        }
-
-        return guidelines.get(coping_style, guidelines["balanced"])
 
     def analyze_safety_trends(
         self, validation_history: List[Dict[str, Any]]

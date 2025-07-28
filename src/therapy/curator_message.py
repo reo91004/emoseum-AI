@@ -75,31 +75,6 @@ class CuratorMessageSystem:
 
         return result
 
-    def get_message_variations(
-        self, base_message: Dict[str, Any], variation_count: int = 3
-    ) -> List[Dict[str, Any]]:
-        """메시지 변형 생성 (A/B 테스트용)"""
-
-        if not self.curator_gpt:
-            logger.warning(
-                "CuratorGPT가 주입되지 않아 메시지 변형을 생성할 수 없습니다."
-            )
-            return []
-
-        variations = []
-        for i in range(variation_count):
-            try:
-                # GPT로 변형 생성
-                variation = self.curator_gpt.generate_message_variation(
-                    base_message=base_message, variation_index=i
-                )
-                if variation:
-                    variations.append(variation)
-            except Exception as e:
-                logger.error(f"메시지 변형 {i} 생성 실패: {e}")
-
-        logger.info(f"총 {len(variations)}개의 메시지 변형이 생성되었습니다.")
-        return variations
 
     def validate_message_quality(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """GPT 생성 메시지 품질 검증"""
@@ -188,39 +163,6 @@ class CuratorMessageSystem:
             "handover_status": "completed",
         }
 
-    def emergency_message_generation(
-        self, user_id: str, error_context: str
-    ) -> Dict[str, Any]:
-        """응급 메시지 생성"""
-
-        logger.error(
-            f"GPT 큐레이터 완전 실패로 응급 메시지 생성: 사용자 {user_id}, 오류: {error_context}"
-        )
-
-        emergency_message = {
-            "message_id": f"emergency_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            "user_id": user_id,
-            "message_type": "emergency_placeholder",
-            "content": {
-                "opening": "A temporary system issue has occurred.",
-                "recognition": "Your emotional journey has been carefully recorded.",
-                "personal_note": "Please try again shortly to receive your personalized message.",
-                "guidance": "Please hold the emotions you've experienced close to your heart.",
-                "closing": "With warmth and support,\nLuna\nArt Curator",
-            },
-            "metadata": {
-                "generation_method": "emergency",
-                "error_context": error_context,
-                "requires_retry": True,
-                "quality_metrics": {
-                    "safety_level": "safe",
-                    "personalization_score": 0.0,
-                },
-            },
-            "created_date": datetime.now().isoformat(),
-        }
-
-        return emergency_message
 
     def get_message_analytics(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """메시지 분석 정보 반환"""

@@ -603,49 +603,6 @@ class PersonalizationManager:
             "personalization_preference": "high",
         }
 
-    def simulate_preference_learning(
-        self, user_id: str, simulation_data: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """선호도 학습 시뮬레이션 (테스트/데모용)"""
-
-        results = {
-            "initial_preferences": self.get_personalization_insights(user_id),
-            "learning_steps": [],
-            "final_preferences": None,
-        }
-
-        for i, data in enumerate(simulation_data):
-            # 각 스텝별 학습 수행
-            if data.get("type") == "guestbook":
-                weight_updates = self.update_preferences_from_guestbook(
-                    user_id=user_id,
-                    guestbook_title=data.get("title", ""),
-                    guestbook_tags=data.get("tags", []),
-                    image_prompt=data.get("prompt", ""),
-                    image_metadata=data.get("metadata", {}),
-                )
-            elif data.get("type") == "message_reaction":
-                weight_updates = self.update_preferences_from_message_reaction(
-                    user_id=user_id,
-                    reaction_type=data.get("reaction_type", "like"),
-                    curator_message=data.get("curator_message", {}),
-                    guestbook_data=data.get("guestbook_data", {}),
-                )
-            else:
-                weight_updates = {}
-
-            step_result = {
-                "step": i + 1,
-                "input_data": data,
-                "weight_updates": weight_updates,
-                "current_preferences": self.get_personalization_insights(user_id),
-            }
-
-            results["learning_steps"].append(step_result)
-
-        results["final_preferences"] = self.get_personalization_insights(user_id)
-
-        return results
 
     def export_user_learning_data(self, user_id: str) -> Dict[str, Any]:
         """사용자 학습 데이터 내보내기 (Level 3 학습용)"""
