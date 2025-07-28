@@ -1,6 +1,2 @@
-#!/usr/bin/env python3
-"""
-Emoseum Utils - 유틸리티 모듈
-"""
-
-__all__ = []
+# src/utils/__init__.py
+# 나중에 GPT 관련 유틸리티들이 추가될 예정

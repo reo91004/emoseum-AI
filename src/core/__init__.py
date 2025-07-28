@@ -1,8 +1,5 @@
-#!/usr/bin/env python3
-"""
-Emoseum Core - 핵심 시스템 모듈
-"""
+# src/core/__init__.py
 
-from .therapy_system import EmotionalImageTherapySystem
+from .act_therapy_system import ACTTherapySystem
 
-__all__ = ["EmotionalImageTherapySystem"]
+__all__ = ["ACTTherapySystem"]
