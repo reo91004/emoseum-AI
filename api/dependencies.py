@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 from .database.connection import get_database
+from .database.collections import Collections
 from src.core.act_therapy_system import ACTTherapySystem
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ async def get_current_user(
         raise credentials_exception
     
     # Get user from database
-    user = await db.users.find_one({"user_id": user_id})
+    user = await db[Collections.USERS].find_one({"user_id": user_id})
     if user is None:
         raise credentials_exception
     
