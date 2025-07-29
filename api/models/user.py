@@ -10,6 +10,7 @@ class CopingStyle(str, Enum):
     TASK_ORIENTED = "task_oriented"
     EMOTION_ORIENTED = "emotion_oriented"
     AVOIDANCE_ORIENTED = "avoidance_oriented"
+    BALANCED = "balanced"
 
 
 class SeverityLevel(str, Enum):

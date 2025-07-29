@@ -46,7 +46,7 @@ class ACTTherapySystem:
         # GPT 서비스들 초기화
         self._initialize_gpt_services()
 
-        # 기존 컴포넌트들 초기화
+        # 컴포넌트들 초기화
         self.prompt_architect = PromptArchitect()
         self.curator_message_system = CuratorMessageSystem(self.user_manager)
 
@@ -580,31 +580,31 @@ class ACTTherapySystem:
     def _generate_gpt_optimization_suggestions(
         self, performance: Dict[str, Any]
     ) -> List[str]:
-        """GPT 최적화 제안"""
+        """GPT 개선 제안"""
         suggestions = []
 
         quality_score = performance.get("quality_score", 0)
         if quality_score < 0.7:
             suggestions.append(
-                "큐레이터 메시지 품질 개선을 위한 프롬프트 엔지니어링 필요"
+                "큐레이터 메시지 품질을 위한 프롬프트 엔지니어링 필요"
             )
 
         personalization_score = performance.get("personalization_score", 0)
         if personalization_score < 0.6:
-            suggestions.append("개인화 수준 향상을 위한 사용자 데이터 활용 개선 필요")
+            suggestions.append("개인화 수준을 위한 사용자 데이터 활용 필요")
 
         fallback_usage = performance.get("fallback_usage", 0)
         if fallback_usage > 0.1:
-            suggestions.append("GPT 실패율 감소를 위한 시스템 안정성 개선 필요")
+            suggestions.append("GPT 실패율 감소를 위한 시스템 안정성 필요")
 
         return suggestions
 
     def trigger_advanced_training(
         self, user_id: str, training_type: str = "both"
     ) -> Dict[str, Any]:
-        """Level 3 고급 모델 훈련 실행"""
+        """Level 3 모델 훈련 실행"""
 
-        logger.info(f"사용자 {user_id}의 Level 3 고급 훈련 시작: {training_type}")
+        logger.info(f"사용자 {user_id}의 Level 3 훈련 시작: {training_type}")
 
         try:
             gallery_items = self.gallery_manager.get_user_gallery(user_id, limit=1000)
@@ -649,7 +649,7 @@ class ACTTherapySystem:
             }
 
         except Exception as e:
-            logger.error(f"Level 3 고급 훈련 실패: {e}")
+            logger.error(f"Level 3 훈련 실패: {e}")
             return {
                 "success": False,
                 "error": str(e),
@@ -658,7 +658,7 @@ class ACTTherapySystem:
             }
 
     def check_advanced_training_readiness(self, user_id: str) -> Dict[str, Any]:
-        """Level 3 고급 모델 훈련 준비 상태 확인"""
+        """Level 3 모델 훈련 준비 상태 확인"""
 
         gallery_items = self.gallery_manager.get_user_gallery(user_id, limit=1000)
 
@@ -733,7 +733,7 @@ class ACTTherapySystem:
             "severity_description": {
                 "mild": "가벼운 수준의 우울 증상이 관찰됩니다.",
                 "moderate": "중등도의 우울 증상이 있어 주의가 필요합니다.",
-                "severe": "심한 우울 증상이 있어 전문적 도움이 권장됩니다.",
+                "severe": "심한 우울 증상이 있어 상담이 권장됩니다.",
             }[result.severity_level],
         }
 
@@ -770,7 +770,7 @@ class ACTTherapySystem:
             )
 
         if result.severity_level == "severe":
-            recommendations.append("전문 상담사와의 상담을 병행하시기를 권장합니다.")
+            recommendations.append("상담사와의 상담을 병행하시기를 권장합니다.")
 
         return recommendations
 
@@ -825,7 +825,7 @@ class ACTTherapySystem:
     def _get_advanced_training_recommendations(
         self, lora_req: Dict[str, Any], draft_req: Dict[str, Any]
     ) -> List[str]:
-        """고급 훈련 권장사항"""
+        """훈련 권장사항"""
         recommendations = []
 
         if not lora_req["can_train"]:
@@ -839,7 +839,7 @@ class ACTTherapySystem:
             )
 
         if lora_req["can_train"] and draft_req["can_train"]:
-            recommendations.append("고급 개인화 모델을 훈련할 준비가 되었습니다!")
+            recommendations.append("개인화 모델을 훈련할 준비가 되었습니다!")
 
         return recommendations
 

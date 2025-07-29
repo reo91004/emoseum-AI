@@ -78,7 +78,7 @@ class ImageGenerator:
 
             self.pipeline = self.pipeline.to(self.device)
 
-            # 메모리 최적화
+            # 메모리 정리
             self.pipeline.enable_attention_slicing()
 
             if self.device.type == "cuda":

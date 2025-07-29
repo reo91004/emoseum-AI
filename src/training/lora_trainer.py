@@ -1,7 +1,7 @@
 # src/training/lora_trainer.py
 
 # ==============================================================================
-# 이 파일은 Level 3 고급 개인화 중 하나인 LoRA(Low-Rank Adaptation) 모델의 훈련을 담당한다.
+# 이 파일은 Level 3 개인화 중 하나인 LoRA(Low-Rank Adaptation) 모델의 훈련을 담당한다.
 # 사용자가 긍정적인 반응을 보인 감정 여정 데이터를 선별하여, 해당 사용자의 특정 화풍이나
 # 스타일에 맞는 작은 크기의 LoRA 어댑터(adapter)를 훈련한다. 이 어댑터를 Stable Diffusion
 # 모델에 결합하면, 적은 비용으로 사용자 맞춤형 이미지를 생성할 수 있다.
@@ -120,7 +120,7 @@ class PersonalizedLoRATrainer:
             logger.error(f"파이프라인 초기화 실패: {e}")
             self.can_train = False
 
-    def prepare_gpt_enhanced_training_data(
+    def prepare_gpt_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """GPT 메타데이터를 포함한 훈련 데이터 준비"""
@@ -183,8 +183,8 @@ class PersonalizedLoRATrainer:
     ) -> List[Dict[str, Any]]:
         """갤러리 아이템을 LoRA 훈련 데이터로 변환 (기존 메서드 + GPT 연동)"""
 
-        # GPT 향상된 데이터 준비 사용
-        return self.prepare_gpt_enhanced_training_data(gallery_items)
+        # GPT 데이터 준비 사용
+        return self.prepare_gpt_training_data(gallery_items)
 
     def _extract_gpt_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """갤러리 아이템에서 GPT 메타데이터 추출"""
@@ -386,7 +386,7 @@ class PersonalizedLoRATrainer:
 
             if tokens_used > 0 and processing_time > 0:
                 tokens_per_second = tokens_used / processing_time
-                if tokens_per_second > 50:  # 효율적인 생성
+                if tokens_per_second > 50:  # 빠른 생성
                     weight *= 1.1
 
             # 가중치가 적용된 샘플 생성
@@ -505,7 +505,7 @@ class PersonalizedLoRATrainer:
                 epoch_loss = 0
 
                 for step, sample in enumerate(weighted_training_data):
-                    loss = self._gpt_enhanced_training_step(sample)
+                    loss = self._gpt_training_step(sample)
 
                     # 그래디언트 누적
                     loss = loss / self.training_config["gradient_accumulation_steps"]
@@ -598,7 +598,7 @@ class PersonalizedLoRATrainer:
                 "lora_config": self.lora_config.__dict__,
                 "training_config": self.training_config,
                 "gpt_integration": {
-                    "gpt_enhanced_training": True,
+                    "gpt_training": True,
                     "quality_correlation": quality_analysis["correlation"],
                     "quality_impact": quality_analysis["quality_impact"],
                     "high_quality_samples": sum(
@@ -641,7 +641,7 @@ class PersonalizedLoRATrainer:
             logger.error(f"LoRA 훈련 실패: {e}")
             return {"success": False, "error": str(e), "user_id": user_id}
 
-    def _gpt_enhanced_training_step(self, sample: Dict[str, Any]) -> torch.Tensor:
+    def _gpt_training_step(self, sample: Dict[str, Any]) -> torch.Tensor:
         """GPT 메타데이터를 활용한 훈련 스텝"""
 
         # 기본 훈련 스텝
@@ -779,7 +779,7 @@ class PersonalizedLoRATrainer:
             "simulated_avg_personalization_score": simulated_personalization,
             "simulated_gpt_quality_correlation": simulated_correlation,
             "gpt_integration": {
-                "gpt_enhanced_training": True,
+                "gpt_training": True,
                 "simulation_mode": True,
                 "quality_correlation": simulated_correlation,
                 "quality_impact": random.uniform(0.2, 0.5),
@@ -822,7 +822,7 @@ class PersonalizedLoRATrainer:
             return True
 
         try:
-            # 기존 LoRA 모델 정리
+            # LoRA 모델 정리
             if self.lora_model is not None:
                 del self.lora_model
 
@@ -860,7 +860,7 @@ class PersonalizedLoRATrainer:
         elif data_size < 50:
             return f"훈련까지 {50 - data_size}개의 긍정적 메시지 반응이 더 필요합니다."
         elif data_size < 100:
-            return "훈련 가능하지만, 더 많은 데이터로 성능을 향상시킬 수 있습니다."
+            return "훈련 가능하지만, 더 많은 데이터로 성능을 개선할 수 있습니다."
         else:
             return "충분한 데이터가 있어 고품질 개인화 모델을 훈련할 수 있습니다."
 
@@ -901,8 +901,8 @@ class PersonalizedLoRATrainer:
                 # GPT 관련 정보 추출
                 gpt_integration = metadata.get("gpt_integration", {})
                 if gpt_integration:
-                    info["gpt_enhanced"] = gpt_integration.get(
-                        "gpt_enhanced_training", False
+                    info["gpt_integrated"] = gpt_integration.get(
+                        "gpt_training", False
                     )
                     info["quality_correlation"] = gpt_integration.get(
                         "quality_correlation", 0.0

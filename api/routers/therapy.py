@@ -1,5 +1,11 @@
 # api/routers/therapy.py
 
+# ==============================================================================
+# 이 파일은 치료 세션 관련 API 엔드포인트를 정의한다.
+# ACT 4단계 여정(The Moment, Reflection, Defusion, Closure)을 통한
+# 감정 탐색과 치료적 경험을 제공한다.
+# ==============================================================================
+
 import logging
 import uuid
 from datetime import datetime
@@ -34,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/therapy", tags=["Therapy Sessions"])
 
-# Rate limiters for different endpoints
+# 엔드포인트별 요청 제한
 diary_rate_limiter = RateLimiter(calls=10, period=60)
 image_rate_limiter = RateLimiter(calls=5, period=60)
 
@@ -44,9 +50,9 @@ async def start_therapy_session(
     current_user: Dict[str, Any] = Depends(get_current_user),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Start a new therapy session"""
+    """새로운 치료 세션 시작"""
     try:
-        # Check for incomplete sessions through ACT system
+        # ACT 시스템을 통해 미완료 세션 확인
         incomplete_journeys = act_system.gallery_manager.get_incomplete_journeys(current_user["user_id"])
         
         if incomplete_journeys:
@@ -55,7 +61,7 @@ async def start_therapy_session(
                 detail=f"Please complete your current session before starting a new one. Session ID: {incomplete_journeys[0].item_id}"
             )
         
-        # Create new session ID (placeholder for now)
+        # 새 세션 ID 생성
         session_id = str(uuid.uuid4())
         
         return SessionResponse(
@@ -84,9 +90,9 @@ async def submit_diary_entry(
     act_system = Depends(get_act_therapy_system),
     _: Any = Depends(diary_rate_limiter)
 ):
-    """Submit diary entry for emotion analysis and reflection image generation"""
+    """일기 제출 및 감정 분석, 성찰 이미지 생성"""
     try:
-        # Process emotion journey through ACT system (combines diary analysis + image generation)
+        # ACT 시스템을 통한 감정 여정 처리 (일기 분석 + 이미지 생성)
         result = act_system.process_emotion_journey(
             user_id=current_user["user_id"],
             diary_text=diary.diary_text
@@ -98,19 +104,18 @@ async def submit_diary_entry(
                 detail="Failed to process diary entry"
             )
         
-        # Store gallery_item_id for subsequent API calls
-        # In a real implementation, you'd want to map session_id to gallery_item_id
+        # 이후 API 호출을 위한 gallery_item_id 저장
         gallery_item_id = result["gallery_item_id"]
         
         return DiaryAnalysisResponse(
-            session_id=gallery_item_id,  # Use gallery_item_id as session_id for API compatibility
+            session_id=gallery_item_id,  # API 호환성을 위해 gallery_item_id를 session_id로 사용
             emotion_analysis=EmotionAnalysis(
                 keywords=result["emotion_analysis"]["keywords"],
                 vad_scores=result["emotion_analysis"]["vad_scores"],
                 primary_emotion=result["emotion_analysis"]["keywords"][0] if result["emotion_analysis"]["keywords"] else "neutral",
-                intensity=0.7  # Default intensity
+                intensity=0.7
             ),
-            next_stage=JourneyStage.DEFUSION  # Skip reflection since image is already generated
+            next_stage=JourneyStage.DEFUSION  # 이미지가 이미 생성되었으므로 reflection 단계 건너뛰기
         )
         
     except HTTPException:
@@ -130,29 +135,35 @@ async def generate_reflection_image(
     act_system = Depends(get_act_therapy_system),
     _: Any = Depends(image_rate_limiter)
 ):
-    """Get reflection image info (image already generated in diary step)"""
+    """성찰 이미지 정보 조회 (이미지는 일기 단계에서 생성됨)"""
     try:
-        # Get gallery item (session_id is actually gallery_item_id)
+        # 갤러리 아이템 조회 (session_id는 실제로 gallery_item_id)
         gallery_item = act_system.gallery_manager.get_gallery_item(session_id)
         
-        if not gallery_item or gallery_item.user_id != current_user["user_id"]:
+        if not gallery_item:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="세션을 찾을 수 없음 - 일기 작성이 실패했을 수 있음"
             )
         
-        # Convert file path to URL
+        if gallery_item.user_id != current_user["user_id"]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="이 세션에 대한 접근 거부"
+            )
+        
+        # 파일 경로를 URL로 변환
         if gallery_item.reflection_image_path:
             image_filename = os.path.basename(gallery_item.reflection_image_path)
             image_url = f"/therapy/images/{image_filename}"
         else:
-            image_url = "/therapy/images/placeholder.png"
+            image_url = "/therapy/images/default.png"
         
         return ImageGenerationResponse(
             session_id=session_id,
             image_url=image_url,
             prompt_used=gallery_item.reflection_prompt or "Reflection image",
-            generation_time=30.0,  # Default value
+            generation_time=30.0
             next_stage=JourneyStage.DEFUSION
         )
         
@@ -173,12 +184,12 @@ async def create_guestbook_entry(
     current_user: Dict[str, Any] = Depends(get_current_user),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Create guestbook entry (Stage 3: Defusion)"""
+    """방명록 작성 (3단계: Defusion)"""
     try:
         # session_id is actually gallery_item_id
         gallery_item_id = session_id
         
-        # Complete guestbook through ACT system
+        # ACT 시스템을 통한 방명록 완성
         result = act_system.complete_guestbook(
             user_id=current_user["user_id"],
             gallery_item_id=gallery_item_id,
@@ -218,12 +229,12 @@ async def generate_curator_message(
     current_user: Dict[str, Any] = Depends(get_current_user),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Generate curator message (Stage 4: Closure)"""
+    """큐레이터 메시지 생성 (4단계: Closure)"""
     try:
         # session_id is actually gallery_item_id
         gallery_item_id = session_id
         
-        # Generate curator message through ACT system
+        # ACT 시스템을 통한 큐레이터 메시지 생성
         result = act_system.create_curator_message(
             user_id=current_user["user_id"],
             gallery_item_id=gallery_item_id
@@ -235,10 +246,10 @@ async def generate_curator_message(
                 detail="Failed to generate curator message"
             )
         
-        # Extract message content from ACT system result
+        # ACT 시스템 결과에서 메시지 내용 추출
         curator_message_content = result.get("curator_message", {})
         if isinstance(curator_message_content, dict) and "content" in curator_message_content:
-            # Format the message content into a single string
+            # 메시지 내용을 하나의 문자열로 포맷
             content = curator_message_content["content"]
             message_parts = []
             if content.get("opening"):
@@ -282,7 +293,7 @@ async def get_session_details(
     current_user: Dict[str, Any] = Depends(get_current_user),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Get therapy session details"""
+    """치료 세션 상세 조회"""
     try:
         # session_id is actually gallery_item_id
         gallery_item = act_system.gallery_manager.get_gallery_item(session_id)
@@ -290,25 +301,25 @@ async def get_session_details(
         if not gallery_item or gallery_item.user_id != current_user["user_id"]:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found"
+                detail="세션을 찾을 수 없음"
             )
         
-        # Determine journey stage and completion status
-        status = gallery_item.get_completion_status()
-        if status["curator_message"]:
+        # 여정 단계 및 완료 상태 결정
+        completion_status = gallery_item.get_completion_status()
+        if completion_status["curator_message"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = True
-        elif status["guestbook"]:
+        elif completion_status["guestbook"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = False
-        elif status["reflection"]:
+        elif completion_status["reflection"]:
             journey_stage = JourneyStage.DEFUSION
             is_completed = False
         else:
             journey_stage = JourneyStage.THE_MOMENT
             is_completed = False
         
-        # Build response
+        # 응답 구성
         response = TherapySessionDetailResponse(
             session_id=session_id,
             user_id=gallery_item.user_id,
@@ -323,11 +334,11 @@ async def get_session_details(
                 intensity=0.7
             ) if gallery_item.emotion_keywords else None,
             generated_image=GeneratedImage(
-                image_url=f"/therapy/images/{os.path.basename(gallery_item.reflection_image_path)}" if gallery_item.reflection_image_path else None,
-                prompt=gallery_item.reflection_prompt or "",
-                metadata=ImageGenerationMetadata(
+                image_path=f"/therapy/images/{os.path.basename(gallery_item.reflection_image_path)}" if gallery_item.reflection_image_path else "",
+                prompt_used=gallery_item.reflection_prompt or "",
+                generation_metadata=ImageGenerationMetadata(
                     generation_time=30.0,
-                    model_used="stable-diffusion"
+                    model_version="stable-diffusion-v1-5"
                 )
             ) if gallery_item.reflection_image_path else None,
             guestbook_entry=GuestbookEntry(
@@ -359,23 +370,23 @@ async def get_generated_image(
     filename: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Serve generated images"""
+    """생성된 이미지 제공"""
     try:
-        # Security check - ensure user owns the image
+        # 보안 검사 - 사용자가 이미지를 소유하고 있는지 확인
         user_prefix = f"{current_user['user_id']}_"
         if not filename.startswith(user_prefix):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
+                detail="접근 거부"
             )
         
-        # Build file path
+        # 파일 경로 구성
         image_path = os.path.join("data", "gallery_images", "reflection", filename)
         
         if not os.path.exists(image_path):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Image not found"
+                detail="이미지를 찾을 수 없음"
             )
         
         return FileResponse(image_path, media_type="image/png")

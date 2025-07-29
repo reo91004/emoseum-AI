@@ -32,7 +32,7 @@ class Collections:
         # Gallery items collection indexes
         gallery_collection = database[cls.GALLERY_ITEMS]
         await gallery_collection.create_index("user_id")
-        await gallery_collection.create_index("session_id", unique=True)
+        await gallery_collection.create_index("item_id", unique=True)
         await gallery_collection.create_index("created_date")
         await gallery_collection.create_index([("user_id", 1), ("created_date", -1)])
         await gallery_collection.create_index("journey_stage")
@@ -83,7 +83,7 @@ USER_SCHEMA = {
 GALLERY_ITEM_SCHEMA = {
     "_id": ObjectId,
     "user_id": str,
-    "session_id": str,  # Unique session identifier
+    "item_id": str,  # Unique gallery item identifier (user-timestamp format)
     "created_date": datetime,
     "diary_text": str,
     "emotion_analysis": {

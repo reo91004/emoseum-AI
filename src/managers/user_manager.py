@@ -268,7 +268,7 @@ class UserManager:
         if not user:
             return
 
-        # 기존 가중치 업데이트
+        # 가중치 업데이트
         for key, delta in weight_updates.items():
             if key in user.visual_preferences.style_weights:
                 user.visual_preferences.style_weights[key] += delta

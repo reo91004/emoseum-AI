@@ -71,7 +71,7 @@ def setup_middleware(app):
     from .config import settings
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # 임시로 모든 origin 허용
+        allow_origins=["*"],
         allow_credentials=False,  # credentials를 false로 설정
         allow_methods=["*"],
         allow_headers=["*"],

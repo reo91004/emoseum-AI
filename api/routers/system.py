@@ -1,5 +1,10 @@
 # api/routers/system.py
 
+# ==============================================================================
+# 이 파일은 시스템 모니터링 및 헬스 체크 API 엔드포인트를 정의한다.
+# 시스템 상태, 비용 통계, 메트릭 등의 정보를 제공한다.
+# ==============================================================================
+
 import logging
 import psutil
 import os
@@ -21,24 +26,24 @@ router = APIRouter(prefix="/system", tags=["System"])
 async def get_system_status(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get system status"""
+    """시스템 상태 조회"""
     try:
-        # System resources
+        # 시스템 리소스
         cpu_percent = psutil.cpu_percent(interval=1)
         memory = psutil.virtual_memory()
         disk = psutil.disk_usage('/')
         
-        # Database status
+        # 데이터베이스 상태
         db_healthy = await mongodb.health_check()
         
-        # Service statuses
+        # 서비스 상태
         services = {
             "database": "healthy" if db_healthy else "unhealthy",
-            "gpt_service": "healthy",  # Could add actual health check
-            "image_generation": "healthy",  # Could add actual health check
+            "gpt_service": "healthy",  # 실제 헬스 체크 추가 가능
+            "image_generation": "healthy",  # 실제 헬스 체크 추가 가능
         }
         
-        # API version
+        # API 버전
         api_version = "1.0.0"
         
         return {
@@ -70,15 +75,15 @@ async def get_system_status(
 async def health_check(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Health check endpoint"""
+    """헬스 체크 엔드포인트"""
     try:
-        # Check database
+        # 데이터베이스 확인
         db_healthy = await mongodb.health_check()
         
         if not db_healthy:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Database unhealthy"
+                detail="데이터베이스 비정상"
             )
         
         return {
@@ -92,7 +97,7 @@ async def health_check(
         logger.error(f"Health check failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Service unhealthy"
+            detail="서비스 비정상"
         )
 
 
@@ -102,18 +107,18 @@ async def get_api_costs(
     current_user: Optional[Dict[str, Any]] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get API usage costs"""
+    """API 사용 비용 조회"""
     try:
-        # Calculate date range
+        # 날짜 범위 계산
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
         
-        # Build query
+        # 쿼리 구성
         query = {}
         if current_user:
             query["user_id"] = current_user["user_id"]
         
-        # Aggregate costs
+        # 비용 집계
         pipeline = [
             {"$match": query},
             {"$unwind": "$api_calls"},
@@ -137,7 +142,7 @@ async def get_api_costs(
         
         cursor = db[Collections.COST_TRACKING].aggregate(pipeline)
         
-        # Process results
+        # 결과 처리
         costs_by_service = {}
         total_cost = 0
         total_tokens = 0
@@ -169,7 +174,7 @@ async def get_api_costs(
             total_tokens += result["total_tokens"]
             total_calls += result["total_calls"]
         
-        # Get user limits if authenticated
+        # 인증된 경우 사용자 제한 조회
         limits = None
         if current_user:
             user_cost_data = await db[Collections.COST_TRACKING].find_one(
@@ -196,7 +201,7 @@ async def get_api_costs(
         logger.error(f"Error getting API costs: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get API costs"
+            detail="API 비용 조회 실패"
         )
 
 
@@ -204,30 +209,30 @@ async def get_api_costs(
 async def get_system_metrics(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get system metrics"""
+    """시스템 메트릭 조회"""
     try:
-        # User metrics
+        # 사용자 메트릭
         total_users = await db[Collections.USERS].count_documents({})
         active_users = await db[Collections.USERS].count_documents({
             "last_login": {"$gte": datetime.utcnow() - timedelta(days=7)}
         })
         
-        # Session metrics
+        # 세션 메트릭
         total_sessions = await db[Collections.GALLERY_ITEMS].count_documents({})
         completed_sessions = await db[Collections.GALLERY_ITEMS].count_documents({
             "is_completed": True
         })
         
-        # Calculate completion rate
+        # 완료율 계산
         completion_rate = (completed_sessions / total_sessions * 100) if total_sessions > 0 else 0
         
-        # Get average session duration (simplified)
+        # 평균 세션 지속 시간
         pipeline = [
             {"$match": {"is_completed": True}},
             {
                 "$group": {
                     "_id": None,
-                    "avg_duration": {"$avg": 1800}  # Placeholder: 30 minutes average
+                    "avg_duration": {"$avg": 1800}
                 }
             }
         ]
@@ -255,5 +260,5 @@ async def get_system_metrics(
         logger.error(f"Error getting system metrics: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get system metrics"
+            detail="시스템 메트릭 조회 실패"
         )

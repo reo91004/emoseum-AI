@@ -396,14 +396,19 @@ class GPTService:
                     "finish_reason": response.choices[0].finish_reason,
                 }
 
-                # 비용 추적
-                self.cost_tracker.record_api_call(
-                    user_id=user_id,
-                    purpose=purpose,
-                    model=self.model,
-                    token_usage=result["token_usage"],
-                    processing_time=processing_time,
-                )
+                # 비용 추적 (오류가 발생해도 API 결과는 반환)
+                try:
+                    self.cost_tracker.record_api_call(
+                        user_id=user_id,
+                        purpose=purpose,
+                        model=self.model,
+                        prompt_tokens=result["token_usage"]["prompt_tokens"],
+                        completion_tokens=result["token_usage"]["completion_tokens"],
+                        processing_time=processing_time,
+                        success=True
+                    )
+                except Exception as cost_error:
+                    logger.warning(f"비용 추적 실패 (API 결과는 정상): {cost_error}")
 
                 # 캐시 저장
                 if self.cache_enabled:
@@ -437,6 +442,18 @@ class GPTService:
 
             except Exception as e:
                 logger.error(f"예상치 못한 오류: {e}")
+                # 실패한 API 호출도 추적
+                if self.cost_tracker:
+                    self.cost_tracker.record_api_call(
+                        user_id=user_id,
+                        purpose=purpose,
+                        model=self.model,
+                        prompt_tokens=0,
+                        completion_tokens=0,
+                        processing_time=processing_time,
+                        success=False,
+                        error_message=str(e)
+                    )
                 break
 
         # 모든 재시도 실패

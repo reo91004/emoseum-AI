@@ -164,7 +164,7 @@ class ColabService(ImageGenerationService):
         """Generate image using Google Colab"""
         try:
             # This would implement the Colab API integration
-            # For now, return a placeholder implementation
+            # 내부 구현
             logger.warning("Colab integration not yet implemented")
             return {
                 "success": False,
@@ -182,7 +182,7 @@ class ColabService(ImageGenerationService):
     
     async def health_check(self) -> bool:
         """Check if Colab service is healthy"""
-        # Placeholder implementation
+        # 기본 구현
         return False
 
 

@@ -165,6 +165,7 @@ class GalleryManager:
         try:
             # gallery_items 컬렉션 인덱스
             self.gallery_items.create_index("user_id")
+            self.gallery_items.create_index("item_id", unique=True)  # UUID 고유 인덱스
             self.gallery_items.create_index("created_date")
             self.gallery_items.create_index([("user_id", 1), ("created_date", -1)])
             
@@ -227,8 +228,11 @@ class GalleryManager:
         reflection_image.save(reflection_path)
         
         # MongoDB 문서 생성
-        now = datetime.now().isoformat()
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S")
+        item_id = f"{user_id}-{timestamp}"  # user-timestamp 형식
         item_doc = {
+            "item_id": item_id,  # readable ID 추가
             "user_id": user_id,
             "diary_text": diary_text,
             "emotion_keywords": emotion_keywords,
@@ -240,7 +244,7 @@ class GalleryManager:
             "curator_message": {},
             "message_reactions": [],
             "guided_question": "",
-            "created_date": now,
+            "created_date": now.isoformat(),
             "coping_style": coping_style,
             # GPT 메타데이터
             "gpt_prompt_used": True,
@@ -254,10 +258,10 @@ class GalleryManager:
         
         try:
             result = self.gallery_items.insert_one(item_doc)
-            item_id = str(result.inserted_id)
+            mongo_id = str(result.inserted_id)
             
             logger.info(f"새 미술관 아이템이 생성되었습니다: {item_id}")
-            return item_id
+            return item_id  # UUID 반환
             
         except Exception as e:
             logger.error(f"미술관 아이템 생성 실패: {e}")
@@ -274,7 +278,7 @@ class GalleryManager:
         
         try:
             result = self.gallery_items.update_one(
-                {"_id": ObjectId(item_id)},
+                {"item_id": item_id},
                 {
                     "$set": {
                         "guestbook_title": guestbook_title,
@@ -304,7 +308,7 @@ class GalleryManager:
             
             # 데이터베이스 업데이트
             result = self.gallery_items.update_one(
-                {"_id": ObjectId(item_id)},
+                {"item_id": item_id},
                 {
                     "$set": {
                         "curator_message": curator_message,
@@ -329,7 +333,7 @@ class GalleryManager:
         """메시지 반응 기록"""
         
         try:
-            # 기존 아이템 조회
+            # 아이템 조회
             item_doc = self.gallery_items.find_one({"_id": ObjectId(item_id)})
             if not item_doc:
                 logger.error(f"미술관 아이템을 찾을 수 없습니다: {item_id}")
@@ -365,7 +369,16 @@ class GalleryManager:
     def get_gallery_item(self, item_id: str) -> Optional[GalleryItem]:
         """미술관 아이템 조회"""
         try:
-            item_doc = self.gallery_items.find_one({"_id": ObjectId(item_id)})
+            # Try to find by ObjectId first
+            try:
+                item_doc = self.gallery_items.find_one({"_id": ObjectId(item_id)})
+                if item_doc:
+                    return self._doc_to_gallery_item(item_doc)
+            except:
+                pass
+            
+            # If ObjectId fails, try to find by item_id field (UUID)
+            item_doc = self.gallery_items.find_one({"item_id": item_id})
             
             if not item_doc:
                 return None

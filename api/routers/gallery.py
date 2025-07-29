@@ -1,5 +1,10 @@
 # api/routers/gallery.py
 
+# ==============================================================================
+# 이 파일은 갤러리 관련 API 엔드포인트를 정의한다.
+# 사용자의 감정 여정 기록을 조회, 필터링, 분석, 내보내기하는 기능을 제공한다.
+# ==============================================================================
+
 import logging
 import json
 import os
@@ -48,9 +53,9 @@ async def get_gallery_items(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get gallery items with optional filtering"""
+    """갤러리 아이템 목록 조회"""
     try:
-        # Build query
+        # 쿼리 구성
         query = {"user_id": current_user["user_id"]}
         
         if start_date or end_date:
@@ -65,9 +70,9 @@ async def get_gallery_items(
             query["emotion_analysis.primary_emotion"] = {"$in": emotions}
         
         if completed_only:
-            query["is_completed"] = True
+            query["curator_message"] = {"$exists": True, "$ne": {}}
         
-        # Get total count
+        # 전체 개수 조회
         total_count = await db[Collections.GALLERY_ITEMS].count_documents(query)
         
         # Get items
@@ -75,19 +80,19 @@ async def get_gallery_items(
         items = []
         
         async for item in cursor:
-            # Build thumbnail URL
+            # 썸네일 URL 생성
             thumbnail_url = None
             if item.get("generated_image", {}).get("image_path"):
                 filename = os.path.basename(item["generated_image"]["image_path"])
                 thumbnail_url = f"/therapy/images/{filename}"
             
             summary = GalleryItemSummary(
-                item_id=str(item["_id"]),
-                session_id=item["session_id"],
+                item_id=item.get("item_id", str(item["_id"])),
+                session_id=item.get("item_id", str(item["_id"])),  # API compatibility
                 created_date=item["created_date"],
                 thumbnail_url=thumbnail_url,
                 primary_emotion=item.get("emotion_analysis", {}).get("primary_emotion", "neutral"),
-                is_completed=item["is_completed"]
+                is_completed=bool(item.get("curator_message"))
             )
             items.append(summary)
         
@@ -111,21 +116,24 @@ async def get_gallery_item(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get specific gallery item details"""
+    """특정 갤러리 아이템 상세 조회"""
     try:
-        # Validate ObjectId
-        try:
-            obj_id = ObjectId(item_id)
-        except:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid item ID"
-            )
-        
+        # item_id로 먼저 찾기 (선호 방법)
         item = await db[Collections.GALLERY_ITEMS].find_one({
-            "_id": obj_id,
+            "item_id": item_id,
             "user_id": current_user["user_id"]
         })
+        
+        # item_id로 찾지 못하면 ObjectId로 시도
+        if not item:
+            try:
+                obj_id = ObjectId(item_id)
+                item = await db[Collections.GALLERY_ITEMS].find_one({
+                    "_id": obj_id,
+                    "user_id": current_user["user_id"]
+                })
+            except:
+                pass
         
         if not item:
             raise HTTPException(
@@ -133,10 +141,10 @@ async def get_gallery_item(
                 detail="Gallery item not found"
             )
         
-        # Build detail response
+        # 상세 응답 구성
         detail = GalleryItemDetail(
-            item_id=str(item["_id"]),
-            session_id=item["session_id"],
+            item_id=item.get("item_id", str(item["_id"])),
+            session_id=item.get("item_id", str(item["_id"])),  # API compatibility
             user_id=item["user_id"],
             created_date=item["created_date"],
             diary_text=item.get("diary_text", ""),
@@ -166,13 +174,13 @@ async def get_gallery_analytics(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Get emotion analytics for gallery items"""
+    """갤러리 아이템의 감정 분석 데이터 조회"""
     try:
-        # Calculate date range
+        # 날짜 범위 계산
         end_date = datetime.utcnow()
         start_date = end_date - timedelta(days=days)
         
-        # Get items in date range
+        # 날짜 범위 내 아이템 조회
         query = {
             "user_id": current_user["user_id"],
             "created_date": {"$gte": start_date, "$lte": end_date}
@@ -180,7 +188,7 @@ async def get_gallery_analytics(
         
         cursor = db[Collections.GALLERY_ITEMS].find(query).sort("created_date", 1)
         
-        # Analyze data
+        # 데이터 분석
         total_items = 0
         completed_journeys = 0
         emotion_counts = {}
@@ -192,7 +200,7 @@ async def get_gallery_analytics(
             if item["is_completed"]:
                 completed_journeys += 1
             
-            # Emotion analysis
+            # 감정 분석
             if item.get("emotion_analysis"):
                 emotion = item["emotion_analysis"].get("primary_emotion", "neutral")
                 emotion_counts[emotion] = emotion_counts.get(emotion, 0) + 1
@@ -202,7 +210,7 @@ async def get_gallery_analytics(
                 vad_sum["arousal"] += vad[1]
                 vad_sum["dominance"] += vad[2]
                 
-                # Add to trends
+                # 트렌드에 추가
                 trend = EmotionTrend(
                     date=item["created_date"],
                     valence=vad[0],
@@ -212,7 +220,7 @@ async def get_gallery_analytics(
                 )
                 emotion_trends.append(trend)
         
-        # Calculate averages
+        # 평균 계산
         if total_items > 0:
             avg_vad = {
                 "valence": vad_sum["valence"] / total_items,
@@ -250,20 +258,20 @@ async def export_gallery_data(
     current_user: Dict[str, Any] = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Export gallery data"""
+    """갤러리 데이터 내보내기"""
     try:
-        # Get all user's gallery items
+        # 사용자의 모든 갤러리 아이템 조회
         cursor = db[Collections.GALLERY_ITEMS].find(
             {"user_id": current_user["user_id"]}
         ).sort("created_date", -1)
         
         items = []
         async for item in cursor:
-            # Remove MongoDB specific fields
+            # MongoDB 특정 필드 제거
             item.pop("_id", None)
             items.append(item)
         
-        # Generate export based on format
+        # 형식에 따른 내보내기 생성
         if format == "json":
             export_data = {
                 "user_id": current_user["user_id"],
@@ -272,16 +280,16 @@ async def export_gallery_data(
                 "items": items
             }
             
-            # Create temporary file
+            # 파일 생성
             with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
                 json.dump(export_data, f, indent=2, default=str)
                 temp_path = f.name
             
-            # Generate download URL (in real implementation, upload to S3 or similar)
+            # 다운로드 URL 생성
             export_url = f"/gallery/download/{os.path.basename(temp_path)}"
             
-        else:  # CSV format
-            # Convert to CSV format (simplified)
+        else:  # CSV 형식
+            # CSV 형식으로 변환
             raise HTTPException(
                 status_code=status.HTTP_501_NOT_IMPLEMENTED,
                 detail="CSV export not yet implemented"
@@ -308,9 +316,9 @@ async def download_export(
     filename: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Download exported gallery data"""
+    """내보낸 갤러리 데이터 다운로드"""
     try:
-        # In production, this would validate ownership and serve from S3/storage
+        # 프로덕션에서는 소유권 검증 및 S3/스토리지에서 제공
         file_path = os.path.join(tempfile.gettempdir(), filename)
         
         if not os.path.exists(file_path):
@@ -319,11 +327,11 @@ async def download_export(
                 detail="Export file not found or expired"
             )
         
-        # Read file
+        # 파일 읽기
         with open(file_path, 'rb') as f:
             content = f.read()
         
-        # Clean up
+        # 정리
         os.unlink(file_path)
         
         return StreamingResponse(

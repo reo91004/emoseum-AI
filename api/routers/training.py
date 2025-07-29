@@ -1,5 +1,10 @@
 # api/routers/training.py
 
+# ==============================================================================
+# 이 파일은 Level 3 개인화 훈련 관련 API 엔드포인트를 정의한다.
+# LoRA와 DRaFT+ 모델 훈련 자격 확인, 훈련 시작, 상태 확인 기능을 제공한다.
+# ==============================================================================
+
 import logging
 import uuid
 from datetime import datetime, timedelta
@@ -25,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/training", tags=["Training"])
 
-# In-memory training status (in production, use Redis or database)
+# 메모리 내 훈련 상태 (프로덕션에서는 Redis 또는 데이터베이스 사용)
 training_status: Dict[str, Dict[str, Any]] = {}
 
 
@@ -35,15 +40,15 @@ async def check_training_eligibility(
     db: AsyncIOMotorDatabase = Depends(get_database),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Check if user is eligible for advanced training"""
+    """사용자의 훈련 자격 확인"""
     try:
-        # Get personalization data
+        # 개인화 데이터 조회
         personalization = await db[Collections.PERSONALIZATION_DATA].find_one(
             {"user_id": current_user["user_id"]}
         )
         
         if not personalization:
-            # Initialize personalization data if not exists
+            # 개인화 데이터가 없으면 초기화
             personalization = {
                 "user_id": current_user["user_id"],
                 "training_eligibility": {
@@ -56,26 +61,26 @@ async def check_training_eligibility(
         
         training_data = personalization.get("training_eligibility", {})
         
-        # Check eligibility criteria
+        # 자격 기준 확인
         positive_interactions = training_data.get("positive_interactions", 0)
         completed_journeys = training_data.get("completed_journeys", 0)
         
-        # LoRA: 5+ positive interactions
+        # LoRA: 5개 이상의 긍정적 상호작용
         lora_ready = positive_interactions >= 5
         
-        # DRaFT+: 10+ completed journeys
+        # DRaFT+: 10개 이상의 완료된 여정
         draft_ready = completed_journeys >= 10
         
-        # Generate eligibility message
+        # 자격 메시지 생성
         if draft_ready:
-            message = "You are eligible for all advanced training options!"
-            recommendation = "We recommend starting with DRaFT+ training for maximum personalization."
+            message = "모든 훈련 옵션을 사용할 수 있습니다!"
+            recommendation = "최대 개인화를 위해 DRaFT+ 훈련을 시작하는 것을 권장합니다."
         elif lora_ready:
-            message = "You are eligible for LoRA personalization training."
-            recommendation = f"Complete {10 - completed_journeys} more journeys to unlock DRaFT+ training."
+            message = "LoRA 개인화 훈련을 사용할 수 있습니다."
+            recommendation = f"DRaFT+ 훈련을 사용하려면 {10 - completed_journeys}개의 여정을 더 완료하세요."
         else:
-            message = "Continue your therapy journey to unlock advanced personalization."
-            recommendation = f"You need {5 - positive_interactions} more positive interactions for LoRA training."
+            message = "개인화를 사용하려면 치료 여정을 계속하세요."
+            recommendation = f"LoRA 훈련을 위해 {5 - positive_interactions}개의 긍정적 상호작용이 더 필요합니다."
         
         eligibility = TrainingEligibility(
             lora_ready=lora_ready,
@@ -107,9 +112,9 @@ async def start_lora_training(
     db: AsyncIOMotorDatabase = Depends(get_database),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Start LoRA personalization training"""
+    """LoRA 개인화 훈련 시작"""
     try:
-        # Check eligibility
+        # 자격 확인
         personalization = await db[Collections.PERSONALIZATION_DATA].find_one(
             {"user_id": current_user["user_id"]}
         )
@@ -117,23 +122,23 @@ async def start_lora_training(
         if not personalization or not personalization.get("training_eligibility", {}).get("lora_ready", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not eligible for LoRA training yet"
+                detail="아직 LoRA 훈련 자격이 없습니다"
             )
         
-        # Check if training already in progress
+        # 훈련이 이미 진행 중인지 확인
         for tid, status in training_status.items():
             if (status["user_id"] == current_user["user_id"] and 
                 status["training_type"] == TrainingType.LORA and 
                 status["status"] == TrainingStatus.IN_PROGRESS):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="LoRA training already in progress"
+                    detail="LoRA 훈련이 이미 진행 중입니다"
                 )
         
-        # Create training session
+        # 훈련 세션 생성
         training_id = str(uuid.uuid4())
         started_at = datetime.utcnow()
-        estimated_completion = started_at + timedelta(minutes=30)  # Estimate 30 minutes
+        estimated_completion = started_at + timedelta(minutes=30)  # 30분 예상
         
         training_status[training_id] = {
             "training_id": training_id,
@@ -149,7 +154,7 @@ async def start_lora_training(
             }
         }
         
-        # Start training in background
+        # 백그라운드에서 훈련 시작
         background_tasks.add_task(
             simulate_lora_training,
             training_id,
@@ -171,7 +176,7 @@ async def start_lora_training(
         logger.error(f"Error starting LoRA training: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to start LoRA training"
+            detail="LoRA 훈련 시작 실패"
         )
 
 
@@ -183,9 +188,9 @@ async def start_draft_training(
     db: AsyncIOMotorDatabase = Depends(get_database),
     act_system = Depends(get_act_therapy_system)
 ):
-    """Start DRaFT+ reinforcement learning"""
+    """DRaFT+ 강화학습 시작"""
     try:
-        # Check eligibility
+        # 자격 확인
         personalization = await db[Collections.PERSONALIZATION_DATA].find_one(
             {"user_id": current_user["user_id"]}
         )
@@ -193,23 +198,23 @@ async def start_draft_training(
         if not personalization or not personalization.get("training_eligibility", {}).get("draft_ready", False):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Not eligible for DRaFT+ training yet"
+                detail="아직 DRaFT+ 훈련 자격이 없습니다"
             )
         
-        # Check if training already in progress
+        # 훈련이 이미 진행 중인지 확인
         for tid, status in training_status.items():
             if (status["user_id"] == current_user["user_id"] and 
                 status["training_type"] == TrainingType.DRAFT and 
                 status["status"] == TrainingStatus.IN_PROGRESS):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="DRaFT+ training already in progress"
+                    detail="DRaFT+ 훈련이 이미 진행 중입니다"
                 )
         
-        # Create training session
+        # 훈련 세션 생성
         training_id = str(uuid.uuid4())
         started_at = datetime.utcnow()
-        estimated_completion = started_at + timedelta(hours=1)  # Estimate 1 hour
+        estimated_completion = started_at + timedelta(hours=1)  # 1시간 예상
         
         training_status[training_id] = {
             "training_id": training_id,
@@ -225,7 +230,7 @@ async def start_draft_training(
             }
         }
         
-        # Start training in background
+        # 백그라운드에서 훈련 시작
         background_tasks.add_task(
             simulate_draft_training,
             training_id,
@@ -247,7 +252,7 @@ async def start_draft_training(
         logger.error(f"Error starting DRaFT+ training: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to start DRaFT+ training"
+            detail="DRaFT+ 훈련 시작 실패"
         )
 
 
@@ -256,21 +261,21 @@ async def get_training_status(
     training_id: str,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get training status"""
+    """훈련 상태 조회"""
     try:
         if training_id not in training_status:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Training session not found"
+                detail="훈련 세션을 찾을 수 없음"
             )
         
         status = training_status[training_id]
         
-        # Verify ownership
+        # 소유권 확인
         if status["user_id"] != current_user["user_id"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
+                detail="접근 거부"
             )
         
         return TrainingStatusResponse(
@@ -290,20 +295,20 @@ async def get_training_status(
         logger.error(f"Error getting training status: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get training status"
+            detail="훈련 상태 조회 실패"
         )
 
 
-# Background task simulators (in production, use actual training logic)
+# 백그라운드 태스크 시뮬레이터 (프로덕션에서는 실제 훈련 로직 사용)
 async def simulate_lora_training(training_id: str, user_id: str, act_system):
-    """Simulate LoRA training progress"""
+    """LoRA 훈련 진행 시뮬레이션"""
     try:
         logger.info(f"Starting LoRA training simulation for user {user_id}")
         training_status[training_id]["status"] = TrainingStatus.IN_PROGRESS
         
-        # Simulate training steps
+        # 훈련 단계 시뮬레이션
         for step in range(100):
-            await asyncio.sleep(1)  # Simulate processing time
+            await asyncio.sleep(1)  # 처리 시간 시뮬레이션
             
             training_status[training_id]["progress"] = {
                 "current_step": step + 1,
@@ -312,7 +317,7 @@ async def simulate_lora_training(training_id: str, user_id: str, act_system):
                 "estimated_time_remaining": (100 - step - 1) * 1
             }
         
-        # Complete training
+        # 훈련 완료
         training_status[training_id]["status"] = TrainingStatus.COMPLETED
         training_status[training_id]["completed_at"] = datetime.utcnow()
         training_status[training_id]["result_metrics"] = {
@@ -330,14 +335,14 @@ async def simulate_lora_training(training_id: str, user_id: str, act_system):
 
 
 async def simulate_draft_training(training_id: str, user_id: str, act_system):
-    """Simulate DRaFT+ training progress"""
+    """DRaFT+ 훈련 진행 시뮬레이션"""
     try:
         logger.info(f"Starting DRaFT+ training simulation for user {user_id}")
         training_status[training_id]["status"] = TrainingStatus.IN_PROGRESS
         
-        # Simulate training steps
+        # 훈련 단계 시뮬레이션
         for step in range(200):
-            await asyncio.sleep(1)  # Simulate processing time
+            await asyncio.sleep(1)  # 처리 시간 시뮬레이션
             
             training_status[training_id]["progress"] = {
                 "current_step": step + 1,
@@ -346,7 +351,7 @@ async def simulate_draft_training(training_id: str, user_id: str, act_system):
                 "estimated_time_remaining": (200 - step - 1) * 1
             }
         
-        # Complete training
+        # 훈련 완료
         training_status[training_id]["status"] = TrainingStatus.COMPLETED
         training_status[training_id]["completed_at"] = datetime.utcnow()
         training_status[training_id]["result_metrics"] = {
