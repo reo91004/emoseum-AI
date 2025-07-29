@@ -2,28 +2,26 @@
 
 # ==============================================================================
 # 이 파일은 GPT API 사용량과 그에 따른 비용을 추적하고 관리하는 유틸리티이다.
-# `gpt_service`에서 API 호출이 발생할 때마다 호출되어, SQLite 데이터베이스에
-# 사용자 ID, 사용 목적, 모델, 토큰 사용량, 비용 등을 기록한다.
+# MongoDB를 사용하여 사용자 ID, 사용 목적, 모델, 토큰 사용량, 비용 등을 기록한다.
 # 이를 통해 사용자별/시스템 전체의 API 비용을 모니터링하고 관리할 수 있다.
 # ==============================================================================
 
-import sqlite3
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import logging
+from pymongo.database import Database
 
 logger = logging.getLogger(__name__)
 
 
 class CostTracker:
-    """GPT API 비용 추적 및 관리"""
+    """GPT API 비용 추적 및 관리 - MongoDB 기반"""
 
-    def __init__(self, db_path: str):
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-
+    def __init__(self, mongodb_client):
+        self.db: Database = mongodb_client.sync_db
+        self.api_calls = self.db.cost_tracking
+        
         # 모델별 토큰 비용 (USD per 1K tokens)
         self.model_costs = {
             "gpt-4o": {"input": 0.0025, "output": 0.01},
@@ -40,763 +38,614 @@ class CostTracker:
             "burst_limit": 5000,  # 시간당 버스트 한도
         }
 
-        self._init_database()
+        self._ensure_indexes()
 
-    def _init_database(self):
-        """데이터베이스 초기화"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+    def _ensure_indexes(self):
+        """MongoDB 인덱스 확인 및 생성"""
+        try:
+            # cost_tracking 컬렉션 인덱스
+            self.api_calls.create_index("user_id")
+            self.api_calls.create_index("timestamp")
+            self.api_calls.create_index("date")
+            self.api_calls.create_index([("user_id", 1), ("timestamp", -1)])
+            self.api_calls.create_index([("user_id", 1), ("date", 1)])
+            
+            logger.info("비용 추적 MongoDB 인덱스가 확인되었습니다.")
+        except Exception as e:
+            logger.warning(f"비용 추적 인덱스 생성 중 오류: {e}")
 
-        # API 호출 기록 테이블
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS api_calls (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                purpose TEXT NOT NULL,
-                model TEXT NOT NULL,
-                prompt_tokens INTEGER NOT NULL,
-                completion_tokens INTEGER NOT NULL,
-                total_tokens INTEGER NOT NULL,
-                input_cost REAL NOT NULL,
-                output_cost REAL NOT NULL,
-                total_cost REAL NOT NULL,
-                processing_time REAL NOT NULL,
-                success BOOLEAN NOT NULL,
-                error_message TEXT,
-                timestamp TEXT NOT NULL,
-                date TEXT NOT NULL
-            )
-        """
-        )
+    def calculate_cost(self, model: str, prompt_tokens: int, completion_tokens: int) -> Dict[str, float]:
+        """토큰 사용량을 기반으로 비용 계산"""
+        if model not in self.model_costs:
+            logger.warning(f"알 수 없는 모델: {model}, 기본 비용 적용")
+            model = "gpt-4o-mini"  # 기본 모델로 폴백
 
-        # 사용자별 한도 설정 테이블
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_limits (
-                user_id TEXT PRIMARY KEY,
-                daily_token_limit INTEGER DEFAULT 10000,
-                monthly_cost_limit REAL DEFAULT 50.0,
-                burst_limit INTEGER DEFAULT 5000,
-                created_date TEXT NOT NULL,
-                updated_date TEXT NOT NULL
-            )
-        """
-        )
+        costs = self.model_costs[model]
+        
+        input_cost = (prompt_tokens / 1000) * costs["input"]
+        output_cost = (completion_tokens / 1000) * costs["output"]
+        total_cost = input_cost + output_cost
 
-        # 일일 사용량 캐시 테이블
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_usage (
-                user_id TEXT NOT NULL,
-                date TEXT NOT NULL,
-                total_tokens INTEGER DEFAULT 0,
-                total_cost REAL DEFAULT 0.0,
-                api_calls INTEGER DEFAULT 0,
-                last_updated TEXT NOT NULL,
-                PRIMARY KEY (user_id, date)
-            )
-        """
-        )
-
-        # 인덱스 생성
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_api_calls_user_date ON api_calls(user_id, date)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_api_calls_timestamp ON api_calls(timestamp)"
-        )
-        cursor.execute(
-            "CREATE INDEX IF NOT EXISTS idx_daily_usage_date ON daily_usage(date)"
-        )
-
-        conn.commit()
-        conn.close()
-        logger.info("비용 추적 데이터베이스가 초기화되었습니다.")
+        return {
+            "input_cost": input_cost,
+            "output_cost": output_cost,
+            "total_cost": total_cost,
+        }
 
     def record_api_call(
         self,
         user_id: str,
         purpose: str,
         model: str,
-        token_usage: Dict[str, int],
+        prompt_tokens: int,
+        completion_tokens: int,
         processing_time: float,
-        success: bool = True,
-        error_message: str = None,
+        success: bool,
+        error_message: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """GPT API 호출 기록"""
-
-        prompt_tokens = token_usage.get("prompt_tokens", 0)
-        completion_tokens = token_usage.get("completion_tokens", 0)
+        """API 호출 기록"""
+        
         total_tokens = prompt_tokens + completion_tokens
-
-        # 비용 계산
-        costs = self._calculate_cost(model, prompt_tokens, completion_tokens)
-
-        timestamp = datetime.now().isoformat()
-        date = datetime.now().strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
+        costs = self.calculate_cost(model, prompt_tokens, completion_tokens)
+        
+        now = datetime.now()
+        timestamp = now.isoformat()
+        date = now.strftime("%Y-%m-%d")
+        
+        # API 호출 기록 생성
+        api_call_doc = {
+            "user_id": user_id,
+            "purpose": purpose,
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "input_cost": costs["input_cost"],
+            "output_cost": costs["output_cost"],
+            "total_cost": costs["total_cost"],
+            "processing_time": processing_time,
+            "success": success,
+            "error_message": error_message,
+            "timestamp": timestamp,
+            "date": date
+        }
+        
         try:
-            # API 호출 기록 저장
-            cursor.execute(
-                """
-                INSERT INTO api_calls 
-                (user_id, purpose, model, prompt_tokens, completion_tokens, total_tokens,
-                 input_cost, output_cost, total_cost, processing_time, success, error_message, timestamp, date)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    user_id,
-                    purpose,
-                    model,
-                    prompt_tokens,
-                    completion_tokens,
-                    total_tokens,
-                    costs["input_cost"],
-                    costs["output_cost"],
-                    costs["total_cost"],
-                    processing_time,
-                    success,
-                    error_message,
-                    timestamp,
-                    date,
-                ),
-            )
-
-            # 일일 사용량 업데이트
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO daily_usage 
-                (user_id, date, total_tokens, total_cost, api_calls, last_updated)
-                VALUES (?, ?, 
-                    COALESCE((SELECT total_tokens FROM daily_usage WHERE user_id = ? AND date = ?), 0) + ?,
-                    COALESCE((SELECT total_cost FROM daily_usage WHERE user_id = ? AND date = ?), 0) + ?,
-                    COALESCE((SELECT api_calls FROM daily_usage WHERE user_id = ? AND date = ?), 0) + 1,
-                    ?)
-            """,
-                (
-                    user_id,
-                    date,
-                    user_id,
-                    date,
-                    total_tokens,
-                    user_id,
-                    date,
-                    costs["total_cost"],
-                    user_id,
-                    date,
-                    timestamp,
-                ),
-            )
-
-            conn.commit()
-
-            record_result = {
-                "success": True,
-                "call_id": cursor.lastrowid,
+            result = self.api_calls.insert_one(api_call_doc)
+            
+            # 반환 데이터
+            record = {
+                "id": str(result.inserted_id),
                 "user_id": user_id,
                 "purpose": purpose,
                 "model": model,
-                "tokens": {
-                    "prompt": prompt_tokens,
-                    "completion": completion_tokens,
-                    "total": total_tokens,
-                },
-                "costs": costs,
-                "processing_time": processing_time,
+                "total_tokens": total_tokens,
+                "total_cost": costs["total_cost"],
+                "success": success,
                 "timestamp": timestamp,
             }
-
-            logger.info(
-                f"API 호출 기록됨: 사용자={user_id}, 목적={purpose}, "
-                f"토큰={total_tokens}, 비용=${costs['total_cost']:.4f}"
-            )
-
-            return record_result
-
+            
+            logger.info(f"API 호출 기록됨: {user_id} - {purpose} - {model} - ${costs['total_cost']:.4f}")
+            return record
+            
         except Exception as e:
-            conn.rollback()
             logger.error(f"API 호출 기록 실패: {e}")
-            return {"success": False, "error": str(e)}
-        finally:
-            conn.close()
+            raise
 
-    def _calculate_cost(
-        self, model: str, prompt_tokens: int, completion_tokens: int
-    ) -> Dict[str, float]:
-        """토큰 사용량 기반 비용 계산"""
-
-        if model not in self.model_costs:
-            logger.warning(f"알 수 없는 모델: {model}. 기본 요금 적용")
-            # 기본적으로 gpt-4o-mini 요금 사용
-            model = "gpt-4o-mini"
-
-        cost_info = self.model_costs[model]
-
-        input_cost = (prompt_tokens / 1000) * cost_info["input"]
-        output_cost = (completion_tokens / 1000) * cost_info["output"]
-        total_cost = input_cost + output_cost
-
-        return {
-            "input_cost": round(input_cost, 6),
-            "output_cost": round(output_cost, 6),
-            "total_cost": round(total_cost, 6),
-        }
-
-    def check_daily_limit(self, user_id: str) -> Dict[str, Any]:
-        """일일 한도 체크"""
-
-        user_limits = self._get_user_limits(user_id)
-        current_usage = self._get_daily_usage(user_id)
-
-        token_limit = user_limits["daily_token_limit"]
-        current_tokens = current_usage["total_tokens"]
-
-        check_result = {
-            "user_id": user_id,
-            "within_limit": current_tokens < token_limit,
-            "current_tokens": current_tokens,
-            "token_limit": token_limit,
-            "remaining_tokens": max(0, token_limit - current_tokens),
-            "usage_percentage": (
-                (current_tokens / token_limit * 100) if token_limit > 0 else 0
-            ),
-            "current_cost": current_usage["total_cost"],
-            "api_calls": current_usage["api_calls"],
-        }
-
-        # 경고 레벨 결정
-        usage_pct = check_result["usage_percentage"]
-        if usage_pct >= 100:
-            check_result["warning_level"] = "exceeded"
-            check_result["warning_message"] = "일일 토큰 한도를 초과했습니다."
-        elif usage_pct >= 90:
-            check_result["warning_level"] = "critical"
-            check_result["warning_message"] = "일일 토큰 한도의 90%에 도달했습니다."
-        elif usage_pct >= 75:
-            check_result["warning_level"] = "warning"
-            check_result["warning_message"] = "일일 토큰 한도의 75%에 도달했습니다."
-        else:
-            check_result["warning_level"] = "normal"
-            check_result["warning_message"] = ""
-
-        return check_result
-
-    def check_monthly_limit(self, user_id: str) -> Dict[str, Any]:
-        """월간 비용 한도 체크"""
-
-        user_limits = self._get_user_limits(user_id)
-        monthly_usage = self._get_monthly_usage(user_id)
-
-        cost_limit = user_limits["monthly_cost_limit"]
-        current_cost = monthly_usage["total_cost"]
-
-        return {
-            "user_id": user_id,
-            "within_limit": current_cost < cost_limit,
-            "current_cost": current_cost,
-            "cost_limit": cost_limit,
-            "remaining_budget": max(0, cost_limit - current_cost),
-            "usage_percentage": (
-                (current_cost / cost_limit * 100) if cost_limit > 0 else 0
-            ),
-            "days_in_month": monthly_usage["days_in_month"],
-            "avg_daily_cost": monthly_usage["avg_daily_cost"],
-        }
-
-    def _get_user_limits(self, user_id: str) -> Dict[str, Any]:
-        """사용자 한도 설정 조회"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT * FROM user_limits WHERE user_id = ?", (user_id,))
-        row = cursor.fetchone()
-
-        if row:
-            limits = {
-                "daily_token_limit": row[1],
-                "monthly_cost_limit": row[2],
-                "burst_limit": row[3],
-            }
-        else:
-            # 기본 한도 설정 및 저장
-            limits = self.default_limits.copy()
-            timestamp = datetime.now().isoformat()
-
-            cursor.execute(
-                """
-                INSERT INTO user_limits 
-                (user_id, daily_token_limit, monthly_cost_limit, burst_limit, created_date, updated_date)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    user_id,
-                    limits["daily_token_limit"],
-                    limits["monthly_cost_limit"],
-                    limits["burst_limit"],
-                    timestamp,
-                    timestamp,
-                ),
-            )
-            conn.commit()
-
-        conn.close()
-        return limits
-
-    def _get_daily_usage(self, user_id: str, date: str = None) -> Dict[str, Any]:
-        """일일 사용량 조회"""
-
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT total_tokens, total_cost, api_calls FROM daily_usage WHERE user_id = ? AND date = ?",
-            (user_id, date),
-        )
-        row = cursor.fetchone()
-
-        if row:
-            usage = {
-                "total_tokens": row[0],
-                "total_cost": row[1],
-                "api_calls": row[2],
-            }
-        else:
-            usage = {
-                "total_tokens": 0,
-                "total_cost": 0.0,
-                "api_calls": 0,
-            }
-
-        conn.close()
-        return usage
-
-    def _get_monthly_usage(self, user_id: str) -> Dict[str, Any]:
-        """월간 사용량 조회"""
-
-        # 현재 월의 시작일과 종료일 계산
-        now = datetime.now()
-        start_date = now.replace(day=1).strftime("%Y-%m-%d")
-
-        # 다음 달 첫날에서 하루 빼기
-        if now.month == 12:
-            next_month = now.replace(year=now.year + 1, month=1, day=1)
-        else:
-            next_month = now.replace(month=now.month + 1, day=1)
-        end_date = (next_month - timedelta(days=1)).strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT SUM(total_cost), COUNT(DISTINCT date), AVG(total_cost)
-            FROM daily_usage 
-            WHERE user_id = ? AND date >= ? AND date <= ?
-        """,
-            (user_id, start_date, end_date),
-        )
-        row = cursor.fetchone()
-
-        total_cost = row[0] if row[0] else 0.0
-        days_with_usage = row[1] if row[1] else 0
-        avg_daily_cost = row[2] if row[2] else 0.0
-
-        conn.close()
-
-        return {
-            "total_cost": total_cost,
-            "days_in_month": now.day,
-            "days_with_usage": days_with_usage,
-            "avg_daily_cost": avg_daily_cost,
-            "start_date": start_date,
-            "end_date": end_date,
-        }
-
-    def get_daily_summary(self, date: str = None) -> Dict[str, Any]:
-        """일일 사용량 요약"""
-
-        if date is None:
-            date = datetime.now().strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 전체 일일 통계
-        cursor.execute(
-            """
-            SELECT COUNT(*), SUM(total_tokens), SUM(total_cost), AVG(processing_time)
-            FROM api_calls 
-            WHERE date = ? AND success = 1
-        """,
-            (date,),
-        )
-        overall_stats = cursor.fetchone()
-
-        # 목적별 통계
-        cursor.execute(
-            """
-            SELECT purpose, COUNT(*), SUM(total_tokens), SUM(total_cost)
-            FROM api_calls 
-            WHERE date = ? AND success = 1
-            GROUP BY purpose
-        """,
-            (date,),
-        )
-        purpose_stats = cursor.fetchall()
-
-        # 모델별 통계
-        cursor.execute(
-            """
-            SELECT model, COUNT(*), SUM(total_tokens), SUM(total_cost)
-            FROM api_calls 
-            WHERE date = ? AND success = 1
-            GROUP BY model
-        """,
-            (date,),
-        )
-        model_stats = cursor.fetchall()
-
-        # 시간대별 사용량
-        cursor.execute(
-            """
-            SELECT strftime('%H', timestamp) as hour, COUNT(*), SUM(total_tokens)
-            FROM api_calls 
-            WHERE date = ? AND success = 1
-            GROUP BY hour
-            ORDER BY hour
-        """,
-            (date,),
-        )
-        hourly_stats = cursor.fetchall()
-
-        conn.close()
-
-        summary = {
-            "date": date,
-            "overall": {
-                "total_calls": overall_stats[0] or 0,
-                "total_tokens": overall_stats[1] or 0,
-                "total_cost": overall_stats[2] or 0.0,
-                "avg_processing_time": overall_stats[3] or 0.0,
-            },
-            "by_purpose": [
-                {
-                    "purpose": row[0],
-                    "calls": row[1],
-                    "tokens": row[2],
-                    "cost": row[3],
-                }
-                for row in purpose_stats
-            ],
-            "by_model": [
-                {
-                    "model": row[0],
-                    "calls": row[1],
-                    "tokens": row[2],
-                    "cost": row[3],
-                }
-                for row in model_stats
-            ],
-            "by_hour": [
-                {
-                    "hour": int(row[0]),
-                    "calls": row[1],
-                    "tokens": row[2],
-                }
-                for row in hourly_stats
-            ],
-        }
-
-        return summary
-
-    def get_cost_optimization_recommendations(
-        self, user_id: str
-    ) -> List[Dict[str, Any]]:
-        """비용 최적화 권장사항"""
-
-        recommendations = []
-
-        # 일일 및 월간 사용량 분석
-        daily_check = self.check_daily_limit(user_id)
-        monthly_check = self.check_monthly_limit(user_id)
-
-        # 높은 사용량 경고
-        if daily_check["usage_percentage"] > 80:
-            recommendations.append(
-                {
-                    "type": "usage_warning",
-                    "priority": "high",
-                    "title": "높은 일일 사용량",
-                    "description": f"오늘 토큰 사용량이 한도의 {daily_check['usage_percentage']:.1f}%에 도달했습니다.",
-                    "action": "사용량을 모니터링하고 필요시 한도를 조정하세요.",
-                }
-            )
-
-        if monthly_check["usage_percentage"] > 70:
-            recommendations.append(
-                {
-                    "type": "budget_warning",
-                    "priority": "medium",
-                    "title": "월간 예산 주의",
-                    "description": f"이번 달 비용이 예산의 {monthly_check['usage_percentage']:.1f}%에 도달했습니다.",
-                    "action": "남은 기간 동안 사용량을 조절하거나 예산을 늘리는 것을 고려하세요.",
-                }
-            )
-
-        # 모델 사용 최적화
-        recent_usage = self._analyze_recent_model_usage(user_id)
-        expensive_model_usage = sum(
-            stats["cost"]
-            for model, stats in recent_usage.items()
-            if model in ["gpt-4", "gpt-4-turbo"]
-        )
-        total_cost = sum(stats["cost"] for stats in recent_usage.values())
-
-        if expensive_model_usage > total_cost * 0.5 and total_cost > 1.0:
-            recommendations.append(
-                {
-                    "type": "model_optimization",
-                    "priority": "medium",
-                    "title": "모델 사용 최적화",
-                    "description": "비싼 모델(GPT-4)의 사용 비중이 높습니다.",
-                    "action": "간단한 작업에는 gpt-4o-mini를 사용하는 것을 고려하세요.",
-                }
-            )
-
-        # 사용 패턴 분석
-        usage_pattern = self._analyze_usage_pattern(user_id)
-        if usage_pattern["peak_hour_concentration"] > 0.6:
-            recommendations.append(
-                {
-                    "type": "usage_pattern",
-                    "priority": "low",
-                    "title": "사용 시간 분산",
-                    "description": "특정 시간대에 사용량이 집중되어 있습니다.",
-                    "action": "가능하다면 사용 시간을 분산하여 시스템 부하를 줄이세요.",
-                }
-            )
-
-        return recommendations
-
-    def _analyze_recent_model_usage(
-        self, user_id: str, days: int = 7
-    ) -> Dict[str, Dict[str, Any]]:
-        """최근 모델별 사용량 분석"""
-
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT model, COUNT(*), SUM(total_tokens), SUM(total_cost)
-            FROM api_calls 
-            WHERE user_id = ? AND date >= ? AND success = 1
-            GROUP BY model
-        """,
-            (user_id, start_date),
-        )
-
-        model_usage = {}
-        for row in cursor.fetchall():
-            model_usage[row[0]] = {
-                "calls": row[1],
-                "tokens": row[2],
-                "cost": row[3],
-            }
-
-        conn.close()
-        return model_usage
-
-    def _analyze_usage_pattern(self, user_id: str, days: int = 7) -> Dict[str, Any]:
-        """사용 패턴 분석"""
-
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 시간대별 사용량
-        cursor.execute(
-            """
-            SELECT strftime('%H', timestamp) as hour, COUNT(*)
-            FROM api_calls 
-            WHERE user_id = ? AND date >= ? AND success = 1
-            GROUP BY hour
-        """,
-            (user_id, start_date),
-        )
-
-        hourly_usage = {int(row[0]): row[1] for row in cursor.fetchall()}
-        total_calls = sum(hourly_usage.values())
-
-        # 피크 시간 집중도 계산
-        max_hourly_calls = max(hourly_usage.values()) if hourly_usage else 0
-        peak_concentration = (max_hourly_calls / total_calls) if total_calls > 0 else 0
-
-        conn.close()
-
-        return {
-            "peak_hour_concentration": peak_concentration,
-            "total_calls": total_calls,
-            "active_hours": len(hourly_usage),
-            "hourly_distribution": hourly_usage,
-        }
-
-    def set_user_limits(
-        self,
-        user_id: str,
-        daily_token_limit: int = None,
-        monthly_cost_limit: float = None,
-        burst_limit: int = None,
-    ) -> bool:
-        """사용자 한도 설정 업데이트"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        try:
-            # 현재 설정 조회
-            current_limits = self._get_user_limits(user_id)
-
-            # 새로운 값으로 업데이트 (None이 아닌 경우만)
-            new_limits = {
-                "daily_token_limit": daily_token_limit
-                or current_limits["daily_token_limit"],
-                "monthly_cost_limit": monthly_cost_limit
-                or current_limits["monthly_cost_limit"],
-                "burst_limit": burst_limit or current_limits["burst_limit"],
-            }
-
-            cursor.execute(
-                """
-                INSERT OR REPLACE INTO user_limits 
-                (user_id, daily_token_limit, monthly_cost_limit, burst_limit, created_date, updated_date)
-                VALUES (?, ?, ?, ?, 
-                    COALESCE((SELECT created_date FROM user_limits WHERE user_id = ?), ?), ?)
-            """,
-                (
-                    user_id,
-                    new_limits["daily_token_limit"],
-                    new_limits["monthly_cost_limit"],
-                    new_limits["burst_limit"],
-                    user_id,
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
-                ),
-            )
-
-            conn.commit()
-            logger.info(f"사용자 {user_id}의 한도가 업데이트되었습니다: {new_limits}")
-            return True
-
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"사용자 한도 업데이트 실패: {e}")
-            return False
-        finally:
-            conn.close()
-
-    def get_usage_statistics(
-        self, user_id: str = None, days: int = 30
+    def get_user_usage_summary(
+        self, user_id: str, days: int = 30
     ) -> Dict[str, Any]:
-        """사용량 통계"""
-
-        start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        where_clause = "WHERE date >= ?"
-        params = [start_date]
-
-        if user_id:
-            where_clause += " AND user_id = ?"
-            params.append(user_id)
-
-        # 전체 통계
-        cursor.execute(
-            f"""
-            SELECT COUNT(*), SUM(total_tokens), SUM(total_cost), 
-                   AVG(processing_time), COUNT(DISTINCT user_id)
-            FROM api_calls 
-            {where_clause} AND success = 1
-        """,
-            params,
-        )
-        overall_stats = cursor.fetchone()
-
-        # 일별 통계
-        cursor.execute(
-            f"""
-            SELECT date, COUNT(*), SUM(total_tokens), SUM(total_cost)
-            FROM api_calls 
-            {where_clause} AND success = 1
-            GROUP BY date
-            ORDER BY date
-        """,
-            params,
-        )
-        daily_stats = cursor.fetchall()
-
-        conn.close()
-
-        return {
-            "period": {"start_date": start_date, "days": days},
-            "overall": {
-                "total_calls": overall_stats[0] or 0,
-                "total_tokens": overall_stats[1] or 0,
-                "total_cost": overall_stats[2] or 0.0,
-                "avg_processing_time": overall_stats[3] or 0.0,
-                "unique_users": overall_stats[4] or 0,
-            },
-            "daily_breakdown": [
+        """사용자별 사용량 요약"""
+        
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).isoformat()
+            
+            # 기본 통계 조회
+            pipeline = [
                 {
-                    "date": row[0],
-                    "calls": row[1],
-                    "tokens": row[2],
-                    "cost": row[3],
+                    "$match": {
+                        "user_id": user_id,
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_calls": {"$sum": 1},
+                        "successful_calls": {"$sum": {"$cond": ["$success", 1, 0]}},
+                        "total_tokens": {"$sum": "$total_tokens"},
+                        "total_cost": {"$sum": "$total_cost"},
+                        "avg_processing_time": {"$avg": "$processing_time"},
+                        "first_call": {"$min": "$timestamp"},
+                        "last_call": {"$max": "$timestamp"}
+                    }
                 }
-                for row in daily_stats
-            ],
+            ]
+            
+            basic_stats = list(self.api_calls.aggregate(pipeline))
+            
+            if not basic_stats:
+                return {
+                    "user_id": user_id,
+                    "period_days": days,
+                    "total_calls": 0,
+                    "total_cost": 0.0,
+                    "error": "데이터 없음"
+                }
+            
+            stats = basic_stats[0]
+            
+            # 목적별 사용량
+            purpose_pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$purpose",
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"}
+                    }
+                }
+            ]
+            
+            purpose_breakdown = {}
+            for doc in self.api_calls.aggregate(purpose_pipeline):
+                purpose_breakdown[doc["_id"]] = {
+                    "calls": doc["calls"],
+                    "tokens": doc["tokens"],
+                    "cost": doc["cost"]
+                }
+            
+            # 모델별 사용량
+            model_pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$model",
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"}
+                    }
+                }
+            ]
+            
+            model_breakdown = {}
+            for doc in self.api_calls.aggregate(model_pipeline):
+                model_breakdown[doc["_id"]] = {
+                    "calls": doc["calls"],
+                    "tokens": doc["tokens"],
+                    "cost": doc["cost"]
+                }
+            
+            # 일별 사용량
+            daily_pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$date",
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"}
+                    }
+                },
+                {"$sort": {"_id": -1}},
+                {"$limit": 30}
+            ]
+            
+            daily_usage = {}
+            for doc in self.api_calls.aggregate(daily_pipeline):
+                daily_usage[doc["_id"]] = {
+                    "calls": doc["calls"],
+                    "tokens": doc["tokens"],
+                    "cost": doc["cost"]
+                }
+            
+            # 오늘과 이번 달 사용량
+            today = datetime.now().strftime("%Y-%m-%d")
+            this_month = datetime.now().strftime("%Y-%m")
+            
+            today_usage = daily_usage.get(today, {"calls": 0, "tokens": 0, "cost": 0.0})
+            
+            monthly_usage_pipeline = [
+                {
+                    "$match": {
+                        "user_id": user_id,
+                        "date": {"$regex": f"^{this_month}"}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"}
+                    }
+                }
+            ]
+            
+            monthly_result = list(self.api_calls.aggregate(monthly_usage_pipeline))
+            monthly_usage = monthly_result[0] if monthly_result else {"calls": 0, "tokens": 0, "cost": 0.0}
+            
+            return {
+                "user_id": user_id,
+                "period_days": days,
+                "summary": {
+                    "total_calls": stats["total_calls"],
+                    "successful_calls": stats["successful_calls"],
+                    "success_rate": stats["successful_calls"] / stats["total_calls"] if stats["total_calls"] > 0 else 0,
+                    "total_tokens": stats["total_tokens"],
+                    "total_cost": stats["total_cost"],
+                    "avg_processing_time": stats["avg_processing_time"] or 0,
+                    "first_call": stats["first_call"],
+                    "last_call": stats["last_call"]
+                },
+                "current_usage": {
+                    "today": today_usage,
+                    "this_month": monthly_usage
+                },
+                "breakdowns": {
+                    "by_purpose": purpose_breakdown,
+                    "by_model": model_breakdown,
+                    "by_day": daily_usage
+                },
+                "limits": self.default_limits,
+                "limit_warnings": self._check_usage_limits(user_id, today_usage, monthly_usage)
+            }
+            
+        except Exception as e:
+            logger.error(f"사용자 사용량 요약 조회 실패: {e}")
+            return {"user_id": user_id, "error": str(e)}
+
+    def _check_usage_limits(self, user_id: str, today_usage: Dict, monthly_usage: Dict) -> Dict[str, Any]:
+        """사용량 한도 확인"""
+        
+        warnings = {
+            "daily_token_warning": False,
+            "monthly_cost_warning": False,
+            "daily_token_exceeded": False,
+            "monthly_cost_exceeded": False,
         }
+        
+        # 일일 토큰 한도 체크
+        daily_tokens = today_usage.get("tokens", 0)
+        daily_limit = self.default_limits["daily_token_limit"]
+        
+        if daily_tokens >= daily_limit:
+            warnings["daily_token_exceeded"] = True
+        elif daily_tokens >= daily_limit * 0.8:
+            warnings["daily_token_warning"] = True
+        
+        # 월간 비용 한도 체크
+        monthly_cost = monthly_usage.get("cost", 0.0)
+        monthly_limit = self.default_limits["monthly_cost_limit"]
+        
+        if monthly_cost >= monthly_limit:
+            warnings["monthly_cost_exceeded"] = True
+        elif monthly_cost >= monthly_limit * 0.8:
+            warnings["monthly_cost_warning"] = True
+        
+        warnings.update({
+            "daily_usage_percentage": (daily_tokens / daily_limit) * 100 if daily_limit > 0 else 0,
+            "monthly_usage_percentage": (monthly_cost / monthly_limit) * 100 if monthly_limit > 0 else 0,
+        })
+        
+        return warnings
+
+    def get_system_usage_summary(self, days: int = 7) -> Dict[str, Any]:
+        """시스템 전체 사용량 요약"""
+        
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).isoformat()
+            
+            # 전체 통계
+            overall_pipeline = [
+                {
+                    "$match": {
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_calls": {"$sum": 1},
+                        "successful_calls": {"$sum": {"$cond": ["$success", 1, 0]}},
+                        "total_tokens": {"$sum": "$total_tokens"},
+                        "total_cost": {"$sum": "$total_cost"},
+                        "unique_users": {"$addToSet": "$user_id"}
+                    }
+                }
+            ]
+            
+            overall_result = list(self.api_calls.aggregate(overall_pipeline))
+            if not overall_result:
+                return {"period_days": days, "total_calls": 0, "error": "데이터 없음"}
+            
+            overall = overall_result[0]
+            
+            # 상위 사용자
+            top_users_pipeline = [
+                {
+                    "$match": {
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$user_id",
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"}
+                    }
+                },
+                {"$sort": {"cost": -1}},
+                {"$limit": 10}
+            ]
+            
+            top_users = []
+            for doc in self.api_calls.aggregate(top_users_pipeline):
+                top_users.append({
+                    "user_id": doc["_id"],
+                    "calls": doc["calls"],
+                    "tokens": doc["tokens"],
+                    "cost": doc["cost"]
+                })
+            
+            # 모델별 사용량
+            model_pipeline = [
+                {
+                    "$match": {
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$model",
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"}
+                    }
+                },
+                {"$sort": {"cost": -1}}
+            ]
+            
+            model_usage = []
+            for doc in self.api_calls.aggregate(model_pipeline):
+                model_usage.append({
+                    "model": doc["_id"],
+                    "calls": doc["calls"],
+                    "tokens": doc["tokens"],
+                    "cost": doc["cost"]
+                })
+            
+            # 일별 트렌드
+            daily_trend_pipeline = [
+                {
+                    "$match": {
+                        "timestamp": {"$gte": start_date}
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": "$date",
+                        "calls": {"$sum": 1},
+                        "tokens": {"$sum": "$total_tokens"},
+                        "cost": {"$sum": "$total_cost"},
+                        "unique_users": {"$addToSet": "$user_id"}
+                    }
+                },
+                {"$sort": {"_id": 1}}
+            ]
+            
+            daily_trend = []
+            for doc in self.api_calls.aggregate(daily_trend_pipeline):
+                daily_trend.append({
+                    "date": doc["_id"],
+                    "calls": doc["calls"],
+                    "tokens": doc["tokens"],
+                    "cost": doc["cost"],
+                    "unique_users": len(doc["unique_users"])
+                })
+            
+            return {
+                "period_days": days,
+                "overall": {
+                    "total_calls": overall["total_calls"],
+                    "successful_calls": overall["successful_calls"],
+                    "success_rate": overall["successful_calls"] / overall["total_calls"] if overall["total_calls"] > 0 else 0,
+                    "total_tokens": overall["total_tokens"],
+                    "total_cost": overall["total_cost"],
+                    "unique_users": len(overall["unique_users"]),
+                    "avg_cost_per_user": overall["total_cost"] / len(overall["unique_users"]) if overall["unique_users"] else 0
+                },
+                "top_users": top_users,
+                "model_usage": model_usage,
+                "daily_trend": daily_trend
+            }
+            
+        except Exception as e:
+            logger.error(f"시스템 사용량 요약 조회 실패: {e}")
+            return {"error": str(e)}
+
+    def get_cost_analytics(self, user_id: Optional[str] = None, days: int = 30) -> Dict[str, Any]:
+        """비용 분석 (사용자별 또는 전체)"""
+        
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).isoformat()
+            
+            match_filter = {"timestamp": {"$gte": start_date}}
+            if user_id:
+                match_filter["user_id"] = user_id
+            
+            # 비용 효율성 분석
+            efficiency_pipeline = [
+                {"$match": match_filter},
+                {
+                    "$group": {
+                        "_id": "$model",
+                        "total_calls": {"$sum": 1},
+                        "total_cost": {"$sum": "$total_cost"},
+                        "total_tokens": {"$sum": "$total_tokens"},
+                        "avg_cost_per_call": {"$avg": "$total_cost"},
+                        "avg_tokens_per_call": {"$avg": "$total_tokens"}
+                    }
+                },
+                {
+                    "$addFields": {
+                        "cost_per_token": {"$divide": ["$total_cost", "$total_tokens"]}
+                    }
+                },
+                {"$sort": {"cost_per_token": 1}}
+            ]
+            
+            efficiency_data = []
+            for doc in self.api_calls.aggregate(efficiency_pipeline):
+                efficiency_data.append({
+                    "model": doc["_id"],
+                    "total_calls": doc["total_calls"],
+                    "total_cost": doc["total_cost"],
+                    "total_tokens": doc["total_tokens"],
+                    "avg_cost_per_call": doc["avg_cost_per_call"],
+                    "avg_tokens_per_call": doc["avg_tokens_per_call"],
+                    "cost_per_token": doc.get("cost_per_token", 0)
+                })
+            
+            # 목적별 비용 분석
+            purpose_pipeline = [
+                {"$match": match_filter},
+                {
+                    "$group": {
+                        "_id": "$purpose",
+                        "calls": {"$sum": 1},
+                        "cost": {"$sum": "$total_cost"},
+                        "tokens": {"$sum": "$total_tokens"}
+                    }
+                },
+                {"$sort": {"cost": -1}}
+            ]
+            
+            purpose_costs = []
+            for doc in self.api_calls.aggregate(purpose_pipeline):
+                purpose_costs.append({
+                    "purpose": doc["_id"],
+                    "calls": doc["calls"],
+                    "cost": doc["cost"],
+                    "tokens": doc["tokens"]
+                })
+            
+            # 비용 절약 제안
+            suggestions = self._generate_cost_suggestions(efficiency_data, purpose_costs)
+            
+            return {
+                "user_id": user_id,
+                "period_days": days,
+                "model_efficiency": efficiency_data,
+                "purpose_costs": purpose_costs,
+                "cost_suggestions": suggestions
+            }
+            
+        except Exception as e:
+            logger.error(f"비용 분석 실패: {e}")
+            return {"error": str(e)}
+
+    def _generate_cost_suggestions(self, efficiency_data: List[Dict], purpose_costs: List[Dict]) -> List[str]:
+        """비용 절약 제안 생성"""
+        suggestions = []
+        
+        if len(efficiency_data) > 1:
+            # 가장 비효율적인 모델과 효율적인 모델 비교
+            least_efficient = max(efficiency_data, key=lambda x: x.get("cost_per_token", 0))
+            most_efficient = min(efficiency_data, key=lambda x: x.get("cost_per_token", 0))
+            
+            if least_efficient["cost_per_token"] > most_efficient["cost_per_token"] * 2:
+                suggestions.append(
+                    f"{least_efficient['model']}에서 {most_efficient['model']}로 전환하면 "
+                    f"토큰당 비용을 {((least_efficient['cost_per_token'] - most_efficient['cost_per_token']) / least_efficient['cost_per_token'] * 100):.1f}% 절약할 수 있습니다."
+                )
+        
+        # 가장 비용이 높은 목적 식별
+        if purpose_costs:
+            highest_cost_purpose = purpose_costs[0]
+            if highest_cost_purpose["cost"] > sum(p["cost"] for p in purpose_costs) * 0.5:
+                suggestions.append(
+                    f"'{highest_cost_purpose['purpose']}' 목적의 사용량이 전체 비용의 큰 부분을 차지합니다. "
+                    "프롬프트 최적화를 검토해보세요."
+                )
+        
+        return suggestions
 
     def cleanup_old_records(self, days_old: int = 90) -> int:
         """오래된 기록 정리"""
-
-        cutoff_date = (datetime.now() - timedelta(days=days_old)).strftime("%Y-%m-%d")
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
         try:
-            # API 호출 기록 정리
-            cursor.execute("DELETE FROM api_calls WHERE date < ?", (cutoff_date,))
-            api_deleted = cursor.rowcount
-
-            # 일일 사용량 정리
-            cursor.execute("DELETE FROM daily_usage WHERE date < ?", (cutoff_date,))
-            daily_deleted = cursor.rowcount
-
-            conn.commit()
-
-            logger.info(
-                f"오래된 기록 정리 완료: API 호출 {api_deleted}개, 일일 사용량 {daily_deleted}개"
-            )
-            return api_deleted + daily_deleted
-
+            cutoff_date = (datetime.now() - timedelta(days=days_old)).isoformat()
+            
+            delete_result = self.api_calls.delete_many({"timestamp": {"$lt": cutoff_date}})
+            deleted_count = delete_result.deleted_count
+            
+            logger.info(f"오래된 비용 추적 기록 {deleted_count}개가 정리되었습니다.")
+            return deleted_count
+            
         except Exception as e:
-            conn.rollback()
-            logger.error(f"기록 정리 실패: {e}")
+            logger.error(f"오래된 기록 정리 실패: {e}")
             return 0
-        finally:
-            conn.close()
+
+    def export_usage_data(self, user_id: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """사용량 데이터 내보내기"""
+        try:
+            query = {
+                "user_id": user_id,
+                "timestamp": {
+                    "$gte": start_date,
+                    "$lte": end_date
+                }
+            }
+            
+            export_data = []
+            for doc in self.api_calls.find(query).sort("timestamp", 1):
+                # _id를 문자열로 변환
+                doc["_id"] = str(doc["_id"])
+                export_data.append(doc)
+            
+            logger.info(f"사용자 {user_id}의 사용량 데이터 {len(export_data)}건을 내보냈습니다.")
+            return export_data
+            
+        except Exception as e:
+            logger.error(f"사용량 데이터 내보내기 실패: {e}")
+            return []
+
+    def get_system_status(self) -> Dict[str, Any]:
+        """비용 추적 시스템 상태"""
+        try:
+            # 총 기록 수
+            total_records = self.api_calls.count_documents({})
+            
+            # 최근 24시간 기록 수
+            yesterday = (datetime.now() - timedelta(days=1)).isoformat()
+            recent_records = self.api_calls.count_documents({"timestamp": {"$gte": yesterday}})
+            
+            return {
+                "database_ready": True,
+                "mongodb_migration_complete": True,
+                "total_records": total_records,
+                "recent_records_24h": recent_records,
+                "supported_models": list(self.model_costs.keys()),
+                "default_limits": self.default_limits
+            }
+            
+        except Exception as e:
+            logger.error(f"비용 추적 시스템 상태 확인 실패: {e}")
+            return {"database_ready": False, "error": str(e)}

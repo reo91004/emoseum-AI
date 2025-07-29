@@ -59,7 +59,7 @@ def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta]
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    act_system: ACTTherapySystem = Depends(get_act_therapy_system)
 ) -> Dict[str, Any]:
     """Get current user from JWT token"""
     credentials_exception = HTTPException(
@@ -76,24 +76,48 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
     
-    # Get user from database
-    user = await db[Collections.USERS].find_one({"user_id": user_id})
+    # Get user from ACT system (MongoDB)
+    user = act_system.user_manager.get_user(user_id)
     if user is None:
         raise credentials_exception
     
-    return user
+    # Convert User object to dict for API compatibility
+    return {
+        "user_id": user.user_id,
+        "created_date": user.created_date,
+        "last_updated": user.last_updated,
+        "psychometric_results": [
+            {
+                "phq9_score": r.phq9_score,
+                "cesd_score": r.cesd_score,
+                "meaq_score": r.meaq_score,
+                "ciss_score": r.ciss_score,
+                "coping_style": r.coping_style,
+                "severity_level": r.severity_level,
+                "test_date": r.test_date
+            } for r in user.psychometric_results
+        ],
+        "visual_preferences": {
+            "art_style": user.visual_preferences.art_style,
+            "color_tone": user.visual_preferences.color_tone,
+            "complexity": user.visual_preferences.complexity,
+            "brightness": user.visual_preferences.brightness,
+            "saturation": user.visual_preferences.saturation,
+            "style_weights": user.visual_preferences.style_weights
+        }
+    }
 
 
 async def get_optional_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    act_system: ACTTherapySystem = Depends(get_act_therapy_system)
 ) -> Optional[Dict[str, Any]]:
     """Get current user from JWT token if provided, otherwise return None"""
     if not credentials:
         return None
     
     try:
-        return await get_current_user(credentials, db)
+        return await get_current_user(credentials, act_system)
     except HTTPException:
         return None
 

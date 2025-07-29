@@ -26,26 +26,22 @@ class ACTTherapySystem:
     """ACT 기반 디지털 치료 시스템 통합 클래스"""
 
     def __init__(
-        self, data_dir: str = "data", model_path: str = "runwayml/stable-diffusion-v1-5"
+        self, mongodb_client=None, model_path: str = "runwayml/stable-diffusion-v1-5"
     ):
-
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
         logger.info("ACT 치료 시스템 초기화 시작...")
 
-        # 기본 컴포넌트 초기화
-        self.user_manager = UserManager(
-            db_path=str(self.data_dir / "users.db"),
-            preferences_dir=str(self.data_dir / "preferences"),
-        )
+        # MongoDB 클라이언트 초기화
+        if mongodb_client is None:
+            from ..dependencies import get_mongodb_client
+            mongodb_client = get_mongodb_client()
+        
+        self.mongodb_client = mongodb_client
 
+        # MongoDB 기반 컴포넌트 초기화
+        self.user_manager = UserManager(mongodb_client)
         self.personalization_manager = PersonalizationManager(self.user_manager)
         self.image_generator = ImageGenerator(model_path)
-        self.gallery_manager = GalleryManager(
-            db_path=str(self.data_dir / "gallery.db"),
-            images_dir=str(self.data_dir / "gallery_images"),
-        )
+        self.gallery_manager = GalleryManager(mongodb_client)
 
         # GPT 서비스들 초기화
         self._initialize_gpt_services()
@@ -76,8 +72,8 @@ class ACTTherapySystem:
             safety_rules_path = str(config_dir / "safety_rules.yaml")
             gpt_prompts_path = str(config_dir / "gpt_prompts.yaml")
 
-            # 컴포넌트들 초기화 (YAML 파일 경로 전달)
-            self.cost_tracker = CostTracker(str(self.data_dir / "cost_tracking.db"))
+            # 컴포넌트들 초기화 (MongoDB 클라이언트 전달)
+            self.cost_tracker = CostTracker(self.mongodb_client)
             self.gpt_service = GPTService(
                 cost_tracker=self.cost_tracker, gpt_prompts_path=gpt_prompts_path
             )
@@ -335,7 +331,7 @@ class ACTTherapySystem:
     def complete_guestbook(
         self,
         user_id: str,
-        gallery_item_id: int,
+        gallery_item_id: str,
         guestbook_title: str,
         guestbook_tags: List[str],
     ) -> Dict[str, Any]:
@@ -386,7 +382,7 @@ class ACTTherapySystem:
         return guestbook_result
 
     def create_curator_message(
-        self, user_id: str, gallery_item_id: int
+        self, user_id: str, gallery_item_id: str
     ) -> Dict[str, Any]:
         """ACT 4단계: Closure (큐레이터 메시지 생성)"""
 
@@ -442,7 +438,7 @@ class ACTTherapySystem:
     def record_message_reaction(
         self,
         user_id: str,
-        gallery_item_id: int,
+        gallery_item_id: str,
         reaction_type: str,
         reaction_data: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
@@ -852,30 +848,33 @@ class ACTTherapySystem:
         if hasattr(self.image_generator, "cleanup"):
             self.image_generator.cleanup()
 
-        if hasattr(self, "cost_tracker"):
-            self.cost_tracker.close()
-
+        # MongoDB 연결은 자동으로 관리됨
         logger.info("ACT 치료 시스템 리소스 정리 완료")
 
     def get_system_status(self) -> Dict[str, Any]:
         """전체 시스템 상태 확인"""
         return {
-            "system_version": "gpt_integrated",
+            "system_version": "mongodb_integrated",
+            "database": {
+                "type": "MongoDB",
+                "connection_ready": self.mongodb_client.test_connection(),
+                "migration_complete": True
+            },
             "components": {
+                "user_manager": self.user_manager is not None,
+                "gallery_manager": self.gallery_manager is not None,
+                "cost_tracker": hasattr(self, "cost_tracker") and self.cost_tracker is not None,
                 "prompt_architect": self.prompt_architect.get_system_status(),
                 "curator_message": self.curator_message_system.get_system_status(),
-                "gpt_service": hasattr(self, "gpt_service")
-                and self.gpt_service is not None,
-                "prompt_engineer": hasattr(self, "prompt_engineer")
-                and self.prompt_engineer is not None,
-                "curator_gpt": hasattr(self, "curator_gpt")
-                and self.curator_gpt is not None,
-                "safety_validator": hasattr(self, "safety_validator")
-                and self.safety_validator is not None,
-                "cost_tracker": hasattr(self, "cost_tracker")
-                and self.cost_tracker is not None,
+                "gpt_service": hasattr(self, "gpt_service") and self.gpt_service is not None,
+                "prompt_engineer": hasattr(self, "prompt_engineer") and self.prompt_engineer is not None,
+                "curator_gpt": hasattr(self, "curator_gpt") and self.curator_gpt is not None,
+                "safety_validator": hasattr(self, "safety_validator") and self.safety_validator is not None,
             },
+            "sqlite_files": 0,
+            "mongodb_collections": ["users", "gallery_items", "cost_tracking"],
             "fallback_systems": False,
             "hardcoded_templates": False,
             "gpt_integration_complete": True,
+            "mongodb_migration_complete": True,
         }
