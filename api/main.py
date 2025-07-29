@@ -13,7 +13,17 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 from api.config import settings
-from api.dependencies import setup_middleware, setup_exception_handlers
+from api.middleware import setup_middleware, setup_exception_handlers
+
+# 라우터 import
+from api.routers import (
+    auth_router,
+    users_router,
+    assessment_router,
+    therapy_router,
+    gallery_router,
+    admin_router,
+)
 
 # 로깅 설정
 logging.basicConfig(
@@ -49,6 +59,7 @@ async def lifespan(app: FastAPI):
 
         logger.info("✅ 모든 서비스 초기화 완료")
         logger.info(f"🌐 서버 시작: http://{settings.api_host}:{settings.api_port}")
+        logger.info(f"📖 API 문서: http://{settings.api_host}:{settings.api_port}/docs")
 
     except Exception as e:
         logger.error(f"❌ 서비스 초기화 실패: {e}")
@@ -131,14 +142,18 @@ setup_middleware(app)
 # 예외 핸들러 설정
 setup_exception_handlers(app)
 
-# 라우터 등록 (나중에 구현될 예정)
-# app.include_router(auth.router, prefix="/auth", tags=["authentication"])
-# app.include_router(users.router, prefix="/users", tags=["users"])
-# app.include_router(therapy.router, prefix="/therapy", tags=["therapy"])
-# app.include_router(gallery.router, prefix="/gallery", tags=["gallery"])
-# app.include_router(admin.router, prefix="/admin", tags=["admin"])
+# ✅ 라우터 등록
+app.include_router(auth_router, tags=["authentication"])
+app.include_router(users_router, tags=["users"])
+app.include_router(assessment_router, tags=["assessment"])
+app.include_router(therapy_router, tags=["therapy"])
+app.include_router(gallery_router, tags=["gallery"])
+app.include_router(admin_router, tags=["admin"])
+
+logger.info("✅ 모든 라우터 등록 완료")
 
 
+# 기본 엔드포인트들
 @app.get("/")
 async def root():
     """API 루트 엔드포인트"""
@@ -148,6 +163,16 @@ async def root():
         "environment": settings.environment,
         "timestamp": datetime.utcnow().isoformat(),
         "status": "healthy",
+        "endpoints": {
+            "auth": "/auth",
+            "users": "/users",
+            "assessment": "/assessment",
+            "therapy": "/therapy",
+            "gallery": "/gallery",
+            "admin": "/admin",
+            "docs": "/docs",
+            "health": "/health",
+        },
     }
 
 
@@ -204,61 +229,36 @@ async def api_info():
         "endpoints": {
             "docs": "/docs" if not settings.is_production() else "disabled",
             "health": "/health",
-            "auth": "/auth/*",
-            "therapy": "/therapy/*",
-            "gallery": "/gallery/*",
+            "auth": "/auth",
+            "users": "/users",
+            "assessment": "/assessment",
+            "therapy": "/therapy",
+            "gallery": "/gallery",
+            "admin": "/admin",
+        },
+        "auth": {
+            "type": "JWT Bearer Token",
+            "expires_in_minutes": settings.jwt_access_token_expire_minutes,
+        },
+        "limits": {
+            "rate_limit": f"{settings.rate_limit_per_minute} requests/minute",
+            "max_diary_length": f"{settings.max_diary_length} characters",
+            "max_upload_size": f"{settings.max_upload_size} bytes",
         },
     }
 
 
-# 개발 환경에서만 사용되는 디버그 엔드포인트
-if settings.debug and not settings.is_production():
-
-    @app.get("/debug/config")
-    async def debug_config():
-        """설정 정보 (개발용)"""
-        return {
-            "environment": settings.environment,
-            "debug": settings.debug,
-            "image_backend": settings.image_backend,
-            "cors_origins": settings.cors_origins,
-            "rate_limit": settings.rate_limit_per_minute,
-            "openai_configured": bool(settings.openai_api_key),
-            "supabase_configured": bool(
-                settings.supabase_url and settings.supabase_anon_key
-            ),
-        }
-
-    @app.get("/debug/logs")
-    async def debug_recent_logs():
-        """최근 로그 (개발용)"""
-        try:
-            log_file = Path(settings.log_file)
-            if log_file.exists():
-                with open(log_file, "r", encoding="utf-8") as f:
-                    lines = f.readlines()
-                    # 최근 50줄만 반환
-                    recent_lines = lines[-50:] if len(lines) > 50 else lines
-                    return {"logs": recent_lines}
-            else:
-                return {"logs": ["Log file not found"]}
-        except Exception as e:
-            return {"error": f"Failed to read logs: {e}"}
-
-
+# 개발 서버 실행을 위한 메인 함수
 if __name__ == "__main__":
     import uvicorn
 
-    logger.info(f"🚀 Starting Emoseum API server...")
-    logger.info(f"📍 Host: {settings.api_host}:{settings.api_port}")
-    logger.info(f"🔧 Environment: {settings.environment}")
-    logger.info(f"🐛 Debug mode: {settings.debug}")
+    logger.info("🔧 개발 서버 모드로 실행 중...")
 
     uvicorn.run(
         "api.main:app",
         host=settings.api_host,
         port=settings.api_port,
-        reload=settings.debug and not settings.is_production(),
+        reload=settings.debug,
         log_level=settings.log_level.lower(),
         access_log=True,
     )

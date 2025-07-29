@@ -2,6 +2,7 @@
 
 import os
 from typing import List, Optional
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 from pathlib import Path
@@ -16,6 +17,10 @@ logger = logging.getLogger(__name__)
 
 class Settings(BaseSettings):
     """API 설정 클래스"""
+
+    model_config = ConfigDict(
+        env_file=str(env_path), case_sensitive=False, extra="ignore"  # 추가 필드 무시
+    )
 
     # === API 서버 설정 ===
     api_host: str = os.getenv("API_HOST", "0.0.0.0")
@@ -39,7 +44,7 @@ class Settings(BaseSettings):
     # === 이미지 생성 설정 ===
     image_backend: str = os.getenv("IMAGE_BACKEND", "local")
     local_model_path: str = os.getenv(
-        "LOCAL_MODEL_PATH", "runwayml/stable-diffusion-v1-5"
+        "STABLE_DIFFUSION_MODEL", "runwayml/stable-diffusion-v1-5"
     )
     remote_gpu_url: Optional[str] = os.getenv("REMOTE_GPU_URL")
     remote_gpu_token: Optional[str] = os.getenv("REMOTE_GPU_TOKEN")
@@ -126,9 +131,9 @@ class Settings(BaseSettings):
         """프로덕션 환경 여부 확인"""
         return self.environment.lower() == "production"
 
-    class Config:
-        env_file = str(env_path)
-        case_sensitive = False
+    # class Config:
+    #     env_file = str(env_path)
+    #     case_sensitive = False
 
 
 # 전역 설정 인스턴스

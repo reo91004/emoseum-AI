@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request, Response, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import asyncio
 from collections import defaultdict
 
@@ -52,14 +53,10 @@ class RateLimitMiddleware:
 
     def _get_client_ip(self, request: Request) -> str:
         """클라이언트 IP 주소 추출"""
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-
-        real_ip = request.headers.get("X-Real-IP")
-        if real_ip:
-            return real_ip
-
+        # X-Forwarded-For 헤더에서 실제 IP 추출 (프록시 환경 대응)
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
 
 
@@ -68,45 +65,35 @@ class RequestLoggingMiddleware:
 
     async def __call__(self, request: Request, call_next):
         start_time = time.time()
-        client_ip = self._get_client_ip(request)
 
         # 요청 로깅
         logger.info(
-            f"📨 {request.method} {request.url} - "
-            f"Client: {client_ip} - "
-            f"User-Agent: {request.headers.get('user-agent', 'Unknown')}"
+            f"📥 {request.method} {request.url} - Client: {self._get_client_ip(request)}"
         )
 
-        try:
-            response = await call_next(request)
-            process_time = time.time() - start_time
+        # 요청 처리
+        response = await call_next(request)
 
-            # 응답 로깅
-            logger.info(
-                f"📤 {request.method} {request.url} - "
-                f"Status: {response.status_code} - "
-                f"Time: {process_time:.3f}s"
-            )
+        # 응답 시간 계산
+        process_time = time.time() - start_time
 
-            # 응답 헤더에 처리 시간 추가
-            response.headers["X-Process-Time"] = str(process_time)
+        # 응답 로깅
+        logger.info(
+            f"📤 {request.method} {request.url} - "
+            f"Status: {response.status_code} - "
+            f"Time: {process_time:.3f}s"
+        )
 
-            return response
+        # 응답 헤더에 처리 시간 추가
+        response.headers["X-Process-Time"] = str(process_time)
 
-        except Exception as e:
-            process_time = time.time() - start_time
-            logger.error(
-                f"❌ {request.method} {request.url} - "
-                f"Error: {str(e)} - "
-                f"Time: {process_time:.3f}s"
-            )
-            raise
+        return response
 
     def _get_client_ip(self, request: Request) -> str:
         """클라이언트 IP 주소 추출"""
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
+        forwarded_for = request.headers.get("X-Forwarded-For")
+        if forwarded_for:
+            return forwarded_for.split(",")[0].strip()
         return request.client.host if request.client else "unknown"
 
 
@@ -123,6 +110,7 @@ class SecurityHeadersMiddleware:
             "X-XSS-Protection": "1; mode=block",
             "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
             "Referrer-Policy": "strict-origin-when-cross-origin",
+            "X-API-Version": settings.api_version,
         }
 
         for header, value in security_headers.items():
@@ -152,7 +140,9 @@ class ErrorHandlingMiddleware:
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content={
-                    "detail": detail,
+                    "success": False,
+                    "error_code": "INTERNAL_SERVER_ERROR",
+                    "error_message": detail,
                     "timestamp": datetime.utcnow().isoformat(),
                     "path": str(request.url),
                 },
@@ -175,7 +165,13 @@ def setup_middleware(app: FastAPI) -> None:
     # 2. 신뢰할 수 있는 호스트 설정 (프로덕션 환경)
     if settings.is_production():
         app.add_middleware(
-            TrustedHostMiddleware, allowed_hosts=["yourdomain.com", "*.yourdomain.com"]
+            TrustedHostMiddleware,
+            allowed_hosts=[
+                "yourdomain.com",
+                "*.yourdomain.com",
+                "localhost",
+                "127.0.0.1",
+            ],
         )
         logger.info("✅ Trusted Host 미들웨어 설정 완료")
 
@@ -191,7 +187,7 @@ def setup_middleware(app: FastAPI) -> None:
     app.middleware("http")(security_middleware)
     logger.info("✅ 보안 헤더 미들웨어 설정 완료")
 
-    # 5. 요청 로깅
+    # 5. 요청 로깅 (개발 환경에서만)
     if settings.debug or not settings.is_production():
         logging_middleware = RequestLoggingMiddleware()
         app.middleware("http")(logging_middleware)
@@ -204,37 +200,65 @@ def setup_middleware(app: FastAPI) -> None:
 
 
 # 커스텀 예외 핸들러들
-async def validation_exception_handler(request: Request, exc):
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Validation 에러 핸들러"""
-    logger.warning(f"Validation error: {exc}")
+    logger.warning(f"Validation error on {request.url}: {exc}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "detail": "Validation error",
-            "errors": exc.errors() if hasattr(exc, "errors") else str(exc),
-            "timestamp": datetime.utcnow().isoformat(),
-        },
-    )
-
-
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """HTTP 예외 핸들러"""
-    logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": exc.detail,
+            "success": False,
+            "error_code": "VALIDATION_ERROR",
+            "error_message": "Request validation failed",
+            "details": exc.errors() if hasattr(exc, "errors") else str(exc),
             "timestamp": datetime.utcnow().isoformat(),
             "path": str(request.url),
         },
     )
 
 
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """HTTP 예외 핸들러"""
+    logger.warning(f"HTTP exception on {request.url}: {exc.status_code} - {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error_code": f"HTTP_{exc.status_code}",
+            "error_message": exc.detail,
+            "timestamp": datetime.utcnow().isoformat(),
+            "path": str(request.url),
+        },
+    )
+
+
+async def authentication_exception_handler(request: Request, exc: HTTPException):
+    """인증 예외 전용 핸들러"""
+    logger.warning(f"Authentication error on {request.url}: {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "success": False,
+            "error_code": "AUTHENTICATION_FAILED",
+            "error_message": exc.detail,
+            "timestamp": datetime.utcnow().isoformat(),
+            "path": str(request.url),
+        },
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
 def setup_exception_handlers(app: FastAPI) -> None:
     """예외 핸들러 설정"""
-    from fastapi.exceptions import RequestValidationError
 
+    # Validation 에러 핸들러
     app.add_exception_handler(RequestValidationError, validation_exception_handler)
+
+    # HTTP 예외 핸들러
     app.add_exception_handler(HTTPException, http_exception_handler)
+
+    # 401 인증 에러 전용 핸들러
+    @app.exception_handler(401)
+    async def custom_auth_exception_handler(request: Request, exc: HTTPException):
+        return await authentication_exception_handler(request, exc)
 
     logger.info("✅ 예외 핸들러 설정 완료")
