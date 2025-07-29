@@ -36,14 +36,9 @@ logger = logging.getLogger(__name__)
 class EmoseumCLI:
     """Emoseum CLI 인터페이스"""
 
-    def __init__(self, data_dir: str = "data", model_path: Optional[str] = None):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-
+    def __init__(self, model_path: Optional[str] = None):
         model_path = model_path or "runwayml/stable-diffusion-v1-5"
-        self.therapy_system = ACTTherapySystem(
-            data_dir=str(self.data_dir), model_path=model_path
-        )
+        self.therapy_system = ACTTherapySystem(model_path=model_path)
 
         self.current_user = None
         self.current_journey = None
@@ -813,12 +808,6 @@ def main():
         description="Emoseum - ACT 기반 디지털 치료 시스템"
     )
     parser.add_argument(
-        "--data-dir",
-        type=str,
-        default="data",
-        help="데이터 저장 디렉토리 (기본값: data)",
-    )
-    parser.add_argument(
         "--model-path",
         type=str,
         default=None,
@@ -836,7 +825,7 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     try:
-        cli = EmoseumCLI(data_dir=args.data_dir, model_path=args.model_path)
+        cli = EmoseumCLI(model_path=args.model_path)
         cli.run()
     except Exception as e:
         logger.error(f"시스템 초기화 실패: {e}")

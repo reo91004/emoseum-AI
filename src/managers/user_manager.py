@@ -2,18 +2,18 @@
 
 # ==============================================================================
 # 이 파일은 사용자 프로필 정보를 관리하는 핵심 모듈이다.
-# SQLite 데이터베이스를 사용하여 사용자 기본 정보와 심리검사 결과를 저장하고,
-# 별도의 JSON 파일을 통해 사용자의 시각적 선호도를 관리한다.
+# MongoDB를 사용하여 사용자 기본 정보와 심리검사 결과를 저장하고,
+# 시각적 선호도도 MongoDB에 통합 관리한다.
 # `ACTTherapySystem`은 이 매니저를 통해 사용자를 생성, 조회하고 심리검사, 선호도 설정을 처리한다.
 # ==============================================================================
 
 import json
-import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 import logging
+from pymongo.database import Database
+from bson import ObjectId
 
 logger = logging.getLogger(__name__)
 
@@ -71,702 +71,95 @@ class User:
 
 
 class UserManager:
-    """사용자 프로필 관리자"""
-
-    def __init__(
-        self, db_path: str = "data/users.db", preferences_dir: str = "data/preferences"
-    ):
-        self.db_path = Path(db_path)
-        self.preferences_dir = Path(preferences_dir)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.preferences_dir.mkdir(parents=True, exist_ok=True)
-        self._init_database()
-
-    def _init_database(self):
-        """데이터베이스 초기화"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 기본 테이블 생성
-        self._create_base_tables(cursor)
-
-        # GPT 관련 마이그레이션 실행
-        self._run_gpt_migrations(cursor)
-
-        conn.commit()
-        conn.close()
-        logger.info("사용자 데이터베이스가 초기화되었습니다.")
-
-    def _create_base_tables(self, cursor):
-        """기본 테이블 생성"""
-
-        # 사용자 테이블
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                user_id TEXT PRIMARY KEY,
-                created_date TEXT NOT NULL,
-                last_updated TEXT NOT NULL
-            )
-        """
-        )
-
-        # 심리검사 결과 테이블
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS psychometric_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                phq9_score INTEGER,
-                cesd_score INTEGER,
-                meaq_score INTEGER,
-                ciss_score INTEGER,
-                coping_style TEXT,
-                severity_level TEXT,
-                test_date TEXT,
-                FOREIGN KEY (user_id) REFERENCES users (user_id)
-            )
-        """
-        )
-
-    def _run_gpt_migrations(self, cursor):
-        """GPT 관련 마이그레이션 실행"""
-
-        # 마이그레이션 추적 테이블
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS migrations (
-                migration_id TEXT PRIMARY KEY,
-                executed_date TEXT
-            )
-        """
-        )
-
-        # Migration 1: user_gpt_settings 테이블 생성
-        cursor.execute(
-            "SELECT migration_id FROM migrations WHERE migration_id = ?",
-            ("create_user_gpt_settings",),
-        )
-        if not cursor.fetchone():
-            logger.info("Migration: user_gpt_settings 테이블 생성")
-
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_gpt_settings (
-                    user_id TEXT PRIMARY KEY,
-                    daily_token_limit INTEGER DEFAULT 1000,
-                    monthly_cost_limit REAL DEFAULT 10.0,
-                    current_daily_usage INTEGER DEFAULT 0,
-                    current_monthly_cost REAL DEFAULT 0.0,
-                    last_reset_date TEXT,
-                    gpt_preferences TEXT,  -- JSON
-                    notification_settings TEXT,  -- JSON
-                    created_date TEXT,
-                    updated_date TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            """
-            )
-
-            cursor.execute(
-                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
-                ("create_user_gpt_settings", datetime.now().isoformat()),
-            )
-
-        # Migration 2: gpt_usage_log 테이블 생성
-        cursor.execute(
-            "SELECT migration_id FROM migrations WHERE migration_id = ?",
-            ("create_gpt_usage_log",),
-        )
-        if not cursor.fetchone():
-            logger.info("Migration: gpt_usage_log 테이블 생성")
-
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS gpt_usage_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    purpose TEXT NOT NULL,  -- prompt_engineering, curator_message
-                    model TEXT NOT NULL,    -- gpt-4o-mini, gpt-4o, etc.
-                    prompt_tokens INTEGER,
-                    completion_tokens INTEGER, 
-                    total_tokens INTEGER,
-                    processing_time REAL,
-                    cost_estimate REAL,
-                    success BOOLEAN,
-                    error_message TEXT,
-                    safety_level TEXT,      -- safe, warning, critical
-                    created_date TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            """
-            )
-
-            cursor.execute(
-                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
-                ("create_gpt_usage_log", datetime.now().isoformat()),
-            )
-
-        # Migration 3: gpt_quality_log 테이블 생성
-        cursor.execute(
-            "SELECT migration_id FROM migrations WHERE migration_id = ?",
-            ("create_gpt_quality_log",),
-        )
-        if not cursor.fetchone():
-            logger.info("Migration: gpt_quality_log 테이블 생성")
-
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS gpt_quality_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id TEXT NOT NULL,
-                    gallery_item_id INTEGER,
-                    response_type TEXT,  -- prompt, curator_message
-                    gpt_model TEXT,
-                    input_tokens INTEGER,
-                    output_tokens INTEGER,
-                    generation_time REAL,
-                    safety_level TEXT,   -- safe, warning, critical
-                    therapeutic_quality TEXT,  -- high, medium, low
-                    personalization_score REAL,  -- 0.0-1.0
-                    user_reaction TEXT,  -- like, save, share, dismiss
-                    reaction_timestamp TEXT,
-                    feedback_data TEXT,  -- JSON
-                    created_date TEXT,
-                    FOREIGN KEY (user_id) REFERENCES users (user_id)
-                )
-            """
-            )
-
-            cursor.execute(
-                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
-                ("create_gpt_quality_log", datetime.now().isoformat()),
-            )
-
-        # Migration 4: gpt_performance_stats 테이블 생성
-        cursor.execute(
-            "SELECT migration_id FROM migrations WHERE migration_id = ?",
-            ("create_gpt_performance_stats",),
-        )
-        if not cursor.fetchone():
-            logger.info("Migration: gpt_performance_stats 테이블 생성")
-
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS gpt_performance_stats (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date TEXT NOT NULL,  -- YYYY-MM-DD 형식
-                    model TEXT NOT NULL,
-                    purpose TEXT NOT NULL,  -- prompt_engineering, curator_message
-                    total_requests INTEGER DEFAULT 0,
-                    successful_requests INTEGER DEFAULT 0,
-                    avg_response_time REAL DEFAULT 0.0,
-                    avg_tokens_per_request REAL DEFAULT 0.0,
-                    total_cost REAL DEFAULT 0.0,
-                    safety_violations INTEGER DEFAULT 0,
-                    positive_user_reactions INTEGER DEFAULT 0,
-                    total_user_reactions INTEGER DEFAULT 0,
-                    created_date TEXT,
-                    UNIQUE(date, model, purpose)
-                )
-            """
-            )
-
-            cursor.execute(
-                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
-                ("create_gpt_performance_stats", datetime.now().isoformat()),
-            )
-
-        # Migration 5: 기존 사용자들을 위한 기본 GPT 설정 생성
-        cursor.execute(
-            "SELECT migration_id FROM migrations WHERE migration_id = ?",
-            ("init_existing_user_gpt_settings",),
-        )
-        if not cursor.fetchone():
-            logger.info("Migration: 기존 사용자 GPT 설정 초기화")
-
-            cursor.execute(
-                """
-                INSERT OR IGNORE INTO user_gpt_settings 
-                (user_id, daily_token_limit, monthly_cost_limit, current_daily_usage, 
-                 current_monthly_cost, last_reset_date, gpt_preferences, 
-                 notification_settings, created_date, updated_date)
-                SELECT user_id, 1000, 10.0, 0, 0.0, ?, '{}', '{}', ?, ?
-                FROM users
-            """,
-                (
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
-                    datetime.now().isoformat(),
-                ),
-            )
-
-            cursor.execute(
-                "INSERT OR REPLACE INTO migrations (migration_id, executed_date) VALUES (?, ?)",
-                ("init_existing_user_gpt_settings", datetime.now().isoformat()),
-            )
-
-    def create_user_gpt_settings(self, user_id: str) -> None:
-        """사용자 GPT 설정 초기화"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT OR IGNORE INTO user_gpt_settings
-            (user_id, daily_token_limit, monthly_cost_limit, current_daily_usage,
-             current_monthly_cost, last_reset_date, gpt_preferences, 
-             notification_settings, created_date, updated_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                user_id,
-                1000,  # 기본 일일 토큰 한도
-                10.0,  # 기본 월간 비용 한도
-                0,  # 현재 일일 사용량
-                0.0,  # 현재 월간 비용
-                datetime.now().isoformat(),
-                json.dumps({}),  # 기본 GPT 선호도
-                json.dumps({}),  # 기본 알림 설정
-                datetime.now().isoformat(),
-                datetime.now().isoformat(),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-        logger.info(f"사용자 {user_id}의 GPT 설정이 초기화되었습니다.")
-
-    def get_user_gpt_usage(self, user_id: str) -> Dict[str, Any]:
-        """사용자 GPT 사용량 조회"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # GPT 설정 조회
-        cursor.execute("SELECT * FROM user_gpt_settings WHERE user_id = ?", (user_id,))
-        settings_row = cursor.fetchone()
-
-        if not settings_row:
-            # 설정이 없으면 생성
-            self.create_user_gpt_settings(user_id)
-            cursor.execute(
-                "SELECT * FROM user_gpt_settings WHERE user_id = ?", (user_id,)
-            )
-            settings_row = cursor.fetchone()
-
-        # 오늘의 사용량 조회
-        today = datetime.now().strftime("%Y-%m-%d")
-        cursor.execute(
-            """
-            SELECT COUNT(*), SUM(total_tokens), SUM(cost_estimate)
-            FROM gpt_usage_log 
-            WHERE user_id = ? AND DATE(created_date) = ?
-        """,
-            (user_id, today),
-        )
-        today_usage = cursor.fetchone()
-
-        # 이번 달 사용량 조회
-        this_month = datetime.now().strftime("%Y-%m")
-        cursor.execute(
-            """
-            SELECT COUNT(*), SUM(total_tokens), SUM(cost_estimate)
-            FROM gpt_usage_log 
-            WHERE user_id = ? AND strftime('%Y-%m', created_date) = ?
-        """,
-            (user_id, this_month),
-        )
-        monthly_usage = cursor.fetchone()
-
-        conn.close()
-
-        usage_data = {
-            "user_id": user_id,
-            "daily_limit": settings_row[1],
-            "monthly_cost_limit": settings_row[2],
-            "current_daily_usage": today_usage[1] if today_usage[1] else 0,
-            "current_monthly_cost": monthly_usage[2] if monthly_usage[2] else 0.0,
-            "today_requests": today_usage[0] if today_usage[0] else 0,
-            "monthly_requests": monthly_usage[0] if monthly_usage[0] else 0,
-            "last_reset_date": settings_row[5],
-            "usage_percentage": {
-                "daily": (
-                    (today_usage[1] / settings_row[1]) * 100
-                    if today_usage[1] and settings_row[1] > 0
-                    else 0
-                ),
-                "monthly": (
-                    (monthly_usage[2] / settings_row[2]) * 100
-                    if monthly_usage[2] and settings_row[2] > 0
-                    else 0
-                ),
-            },
-        }
-
-        return usage_data
-
-    def update_daily_usage(self, user_id: str, tokens_used: int, cost: float) -> None:
-        """일일 사용량 업데이트"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 현재 설정 조회
-        cursor.execute(
-            "SELECT current_daily_usage, current_monthly_cost FROM user_gpt_settings WHERE user_id = ?",
-            (user_id,),
-        )
-        current = cursor.fetchone()
-
-        if current:
-            new_daily_usage = current[0] + tokens_used
-            new_monthly_cost = current[1] + cost
-
-            cursor.execute(
-                """
-                UPDATE user_gpt_settings
-                SET current_daily_usage = ?, current_monthly_cost = ?, updated_date = ?
-                WHERE user_id = ?
-            """,
-                (
-                    new_daily_usage,
-                    new_monthly_cost,
-                    datetime.now().isoformat(),
-                    user_id,
-                ),
-            )
-
-        conn.commit()
-        conn.close()
-
-    def check_usage_limits(self, user_id: str) -> Dict[str, bool]:
-        """사용량 한도 확인"""
-
-        usage_data = self.get_user_gpt_usage(user_id)
-
-        return {
-            "daily_limit_exceeded": usage_data["current_daily_usage"]
-            >= usage_data["daily_limit"],
-            "monthly_limit_exceeded": usage_data["current_monthly_cost"]
-            >= usage_data["monthly_cost_limit"],
-            "daily_warning": usage_data["usage_percentage"]["daily"] >= 80,
-            "monthly_warning": usage_data["usage_percentage"]["monthly"] >= 80,
-            "can_use_gpt": (
-                usage_data["current_daily_usage"] < usage_data["daily_limit"]
-                and usage_data["current_monthly_cost"]
-                < usage_data["monthly_cost_limit"]
-            ),
-        }
-
-    def reset_daily_usage(self, user_id: str) -> None:
-        """일일 사용량 리셋"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE user_gpt_settings
-            SET current_daily_usage = 0, last_reset_date = ?, updated_date = ?
-            WHERE user_id = ?
-        """,
-            (datetime.now().isoformat(), datetime.now().isoformat(), user_id),
-        )
-
-        conn.commit()
-        conn.close()
-        logger.info(f"사용자 {user_id}의 일일 사용량이 리셋되었습니다.")
-
-    def get_gpt_preferences(self, user_id: str) -> Dict[str, Any]:
-        """GPT 개인화 선호도 조회"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT gpt_preferences FROM user_gpt_settings WHERE user_id = ?",
-            (user_id,),
-        )
-        result = cursor.fetchone()
-        conn.close()
-
-        if result and result[0]:
-            try:
-                return json.loads(result[0])
-            except json.JSONDecodeError:
-                logger.warning(f"사용자 {user_id}의 GPT 선호도 파싱 실패")
-
-        return {}
-
-    def update_gpt_preferences(self, user_id: str, preferences: Dict[str, Any]) -> None:
-        """GPT 개인화 선호도 업데이트"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            UPDATE user_gpt_settings
-            SET gpt_preferences = ?, updated_date = ?
-            WHERE user_id = ?
-        """,
-            (json.dumps(preferences), datetime.now().isoformat(), user_id),
-        )
-
-        conn.commit()
-        conn.close()
-        logger.info(f"사용자 {user_id}의 GPT 선호도가 업데이트되었습니다.")
-
-    def log_gpt_usage(
-        self,
-        user_id: str,
-        purpose: str,
-        model: str,
-        prompt_tokens: int,
-        completion_tokens: int,
-        processing_time: float,
-        cost_estimate: float,
-        success: bool,
-        error_message: str = None,
-        safety_level: str = "safe",
-    ) -> None:
-        """GPT 사용량 로그 기록"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        total_tokens = prompt_tokens + completion_tokens
-
-        cursor.execute(
-            """
-            INSERT INTO gpt_usage_log
-            (user_id, purpose, model, prompt_tokens, completion_tokens, total_tokens,
-             processing_time, cost_estimate, success, error_message, safety_level, created_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                user_id,
-                purpose,
-                model,
-                prompt_tokens,
-                completion_tokens,
-                total_tokens,
-                processing_time,
-                cost_estimate,
-                success,
-                error_message,
-                safety_level,
-                datetime.now().isoformat(),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-
-        # 일일 사용량도 업데이트
-        if success:
-            self.update_daily_usage(user_id, total_tokens, cost_estimate)
-
-    def log_gpt_quality(
-        self,
-        user_id: str,
-        gallery_item_id: int,
-        response_type: str,
-        gpt_model: str,
-        input_tokens: int,
-        output_tokens: int,
-        generation_time: float,
-        safety_level: str,
-        therapeutic_quality: str,
-        personalization_score: float,
-        user_reaction: str = None,
-        feedback_data: Dict[str, Any] = None,
-    ) -> None:
-        """GPT 응답 품질 로그 기록"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO gpt_quality_log
-            (user_id, gallery_item_id, response_type, gpt_model, input_tokens, output_tokens,
-             generation_time, safety_level, therapeutic_quality, personalization_score,
-             user_reaction, reaction_timestamp, feedback_data, created_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                user_id,
-                gallery_item_id,
-                response_type,
-                gpt_model,
-                input_tokens,
-                output_tokens,
-                generation_time,
-                safety_level,
-                therapeutic_quality,
-                personalization_score,
-                user_reaction,
-                datetime.now().isoformat() if user_reaction else None,
-                json.dumps(feedback_data) if feedback_data else None,
-                datetime.now().isoformat(),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-
-    def get_gpt_usage_analytics(self, user_id: str, days: int = 30) -> Dict[str, Any]:
-        """GPT 사용량 분석 데이터 조회"""
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 지정된 기간의 사용량 조회
-        start_date = (datetime.now() - timedelta(days=days)).isoformat()
-
-        # 목적별 사용량
-        cursor.execute(
-            """
-            SELECT purpose, COUNT(*), SUM(total_tokens), SUM(cost_estimate)
-            FROM gpt_usage_log
-            WHERE user_id = ? AND created_date >= ?
-            GROUP BY purpose
-        """,
-            (user_id, start_date),
-        )
-        purpose_stats = [
-            {
-                "purpose": row[0],
-                "requests": row[1],
-                "tokens": row[2],
-                "cost": row[3],
-            }
-            for row in cursor.fetchall()
-        ]
-
-        # 일별 사용량
-        cursor.execute(
-            """
-            SELECT DATE(created_date) as date, COUNT(*), SUM(total_tokens)
-            FROM gpt_usage_log
-            WHERE user_id = ? AND created_date >= ?
-            GROUP BY DATE(created_date)
-            ORDER BY date DESC
-            LIMIT 30
-        """,
-            (user_id, start_date),
-        )
-        daily_usage = [
-            {"date": row[0], "requests": row[1], "tokens": row[2]}
-            for row in cursor.fetchall()
-        ]
-
-        # 성공률
-        cursor.execute(
-            """
-            SELECT 
-                COUNT(*) as total,
-                SUM(CASE WHEN success = 1 THEN 1 ELSE 0 END) as successful
-            FROM gpt_usage_log
-            WHERE user_id = ? AND created_date >= ?
-        """,
-            (user_id, start_date),
-        )
-        success_stats = cursor.fetchone()
-        success_rate = (
-            success_stats[1] / success_stats[0] if success_stats[0] > 0 else 0
-        )
-
-        conn.close()
-
-        return {
-            "user_id": user_id,
-            "period_days": days,
-            "purpose_breakdown": purpose_stats,
-            "daily_usage": daily_usage,
-            "success_rate": success_rate,
-            "total_requests": sum(stat["requests"] for stat in purpose_stats),
-            "total_tokens": sum(stat["tokens"] for stat in purpose_stats),
-            "total_cost": sum(stat["cost"] for stat in purpose_stats),
-        }
+    """사용자 프로필 관리자 - MongoDB 기반"""
+
+    def __init__(self, mongodb_client):
+        self.db: Database = mongodb_client.sync_db
+        self.users_collection = self.db.users
+        self._ensure_indexes()
+
+    def _ensure_indexes(self):
+        """MongoDB 인덱스 확인 및 생성"""
+        try:
+            # users 컬렉션 인덱스
+            self.users_collection.create_index("user_id", unique=True)
+            self.users_collection.create_index("created_date")
+            
+            logger.info("MongoDB 인덱스가 확인되었습니다.")
+        except Exception as e:
+            logger.warning(f"인덱스 생성 중 오류: {e}")
 
     def create_user(self, user_id: str) -> User:
         """새 사용자 생성"""
-        user = User(user_id=user_id, created_date=datetime.now().isoformat())
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT OR REPLACE INTO users (user_id, created_date, last_updated)
-            VALUES (?, ?, ?)
-        """,
-            (user.user_id, user.created_date, user.last_updated),
-        )
-
-        conn.commit()
-        conn.close()
-
-        # 기본 선호도 파일 생성
-        self._save_user_preferences(user)
-
-        # GPT 설정 초기화
-        self.create_user_gpt_settings(user_id)
-
-        logger.info(f"새 사용자가 생성되었습니다: {user_id}")
-        return user
+        now = datetime.now().isoformat()
+        
+        # 사용자 문서 생성
+        user_doc = {
+            "user_id": user_id,
+            "created_date": now,
+            "last_updated": now,
+            "psychometric_results": [],
+            "visual_preferences": asdict(VisualPreferences()),
+            "gpt_settings": {
+                "daily_token_limit": 1000,
+                "monthly_cost_limit": 10.0,
+                "current_daily_usage": 0,
+                "current_monthly_cost": 0.0,
+                "last_reset_date": now,
+                "gpt_preferences": {},
+                "notification_settings": {}
+            }
+        }
+        
+        try:
+            result = self.users_collection.insert_one(user_doc)
+            logger.info(f"새 사용자가 생성되었습니다: {user_id}")
+            
+            # User 객체 반환
+            user = User(
+                user_id=user_id,
+                created_date=now,
+                visual_preferences=VisualPreferences(),
+                last_updated=now
+            )
+            return user
+            
+        except Exception as e:
+            logger.error(f"사용자 생성 실패: {e}")
+            raise
 
     def get_user(self, user_id: str) -> Optional[User]:
         """사용자 정보 조회"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        # 기본 사용자 정보
-        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-        user_row = cursor.fetchone()
-
-        if not user_row:
-            conn.close()
-            return None
-
-        user = User(
-            user_id=user_row[0], created_date=user_row[1], last_updated=user_row[2]
-        )
-
-        # 심리검사 결과들
-        cursor.execute(
-            """
-            SELECT * FROM psychometric_results 
-            WHERE user_id = ? 
-            ORDER BY test_date DESC
-        """,
-            (user_id,),
-        )
-
-        results = []
-        for row in cursor.fetchall():
-            result = PsychometricResult(
-                phq9_score=row[2],
-                cesd_score=row[3],
-                meaq_score=row[4],
-                ciss_score=row[5],
-                coping_style=row[6],
-                severity_level=row[7],
-                test_date=row[8],
+        try:
+            user_doc = self.users_collection.find_one({"user_id": user_id})
+            
+            if not user_doc:
+                return None
+            
+            # 심리검사 결과 변환
+            psychometric_results = []
+            for result_data in user_doc.get("psychometric_results", []):
+                result = PsychometricResult(**result_data)
+                psychometric_results.append(result)
+            
+            # 시각적 선호도 변환
+            visual_prefs_data = user_doc.get("visual_preferences", {})
+            visual_preferences = VisualPreferences(**visual_prefs_data)
+            
+            # User 객체 생성
+            user = User(
+                user_id=user_doc["user_id"],
+                created_date=user_doc["created_date"],
+                psychometric_results=psychometric_results,
+                visual_preferences=visual_preferences,
+                last_updated=user_doc.get("last_updated", user_doc["created_date"])
             )
-            results.append(result)
-
-        user.psychometric_results = results
-        conn.close()
-
-        # 시각 선호도 로드
-        user.visual_preferences = self._load_user_preferences(user_id)
-
-        return user
+            
+            return user
+            
+        except Exception as e:
+            logger.error(f"사용자 조회 실패: {e}")
+            return None
 
     def conduct_psychometric_test(
         self,
@@ -777,13 +170,13 @@ class UserManager:
         ciss_score: int,
     ) -> PsychometricResult:
         """심리검사 실시 및 결과 저장"""
-
+        
         # 대처 스타일 결정
         coping_style = self._determine_coping_style(meaq_score, ciss_score)
-
+        
         # 심각도 결정
         severity_level = self._determine_severity_level(phq9_score, cesd_score)
-
+        
         result = PsychometricResult(
             phq9_score=phq9_score,
             cesd_score=cesd_score,
@@ -793,36 +186,23 @@ class UserManager:
             severity_level=severity_level,
             test_date=datetime.now().isoformat(),
         )
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO psychometric_results 
-            (user_id, phq9_score, cesd_score, meaq_score, ciss_score, 
-             coping_style, severity_level, test_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-            (
-                user_id,
-                phq9_score,
-                cesd_score,
-                meaq_score,
-                ciss_score,
-                coping_style,
-                severity_level,
-                result.test_date,
-            ),
-        )
-
-        conn.commit()
-        conn.close()
-
-        logger.info(
-            f"사용자 {user_id}의 심리검사가 완료되었습니다: {coping_style}, {severity_level}"
-        )
-        return result
+        
+        try:
+            # MongoDB에 결과 추가
+            self.users_collection.update_one(
+                {"user_id": user_id},
+                {
+                    "$push": {"psychometric_results": asdict(result)},
+                    "$set": {"last_updated": datetime.now().isoformat()}
+                }
+            )
+            
+            logger.info(f"사용자 {user_id}의 심리검사가 완료되었습니다: {coping_style}, {severity_level}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"심리검사 결과 저장 실패: {e}")
+            raise
 
     def _determine_coping_style(self, meaq_score: int, ciss_score: int) -> str:
         """대처 스타일 결정"""
@@ -864,33 +244,23 @@ class UserManager:
                 {"painting": 0.33, "photography": 0.33, "abstract": 0.34},
             ),
         )
-
-        # preferences.json 파일에 저장
-        pref_file = self.preferences_dir / f"{user_id}_preferences.json"
-        with open(pref_file, "w", encoding="utf-8") as f:
-            json.dump(asdict(visual_prefs), f, indent=2, ensure_ascii=False)
-
-        logger.info(f"사용자 {user_id}의 시각적 선호도가 설정되었습니다.")
-
-    def _load_user_preferences(self, user_id: str) -> VisualPreferences:
-        """사용자 선호도 로드"""
-        pref_file = self.preferences_dir / f"{user_id}_preferences.json"
-
-        if pref_file.exists():
-            try:
-                with open(pref_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                return VisualPreferences(**data)
-            except Exception as e:
-                logger.warning(f"선호도 파일 로드 실패: {e}")
-
-        return VisualPreferences()
-
-    def _save_user_preferences(self, user: User):
-        """사용자 선호도 저장"""
-        pref_file = self.preferences_dir / f"{user.user_id}_preferences.json"
-        with open(pref_file, "w", encoding="utf-8") as f:
-            json.dump(asdict(user.visual_preferences), f, indent=2, ensure_ascii=False)
+        
+        try:
+            self.users_collection.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "visual_preferences": asdict(visual_prefs),
+                        "last_updated": datetime.now().isoformat()
+                    }
+                }
+            )
+            
+            logger.info(f"사용자 {user_id}의 시각적 선호도가 설정되었습니다.")
+            
+        except Exception as e:
+            logger.error(f"시각적 선호도 설정 실패: {e}")
+            raise
 
     def update_preference_weights(self, user_id: str, weight_updates: Dict[str, float]):
         """선호도 가중치 업데이트"""
@@ -898,7 +268,7 @@ class UserManager:
         if not user:
             return
 
-        # 기존 가중치 업데이트
+        # 가중치 업데이트
         for key, delta in weight_updates.items():
             if key in user.visual_preferences.style_weights:
                 user.visual_preferences.style_weights[key] += delta
@@ -913,8 +283,22 @@ class UserManager:
             for key in user.visual_preferences.style_weights:
                 user.visual_preferences.style_weights[key] /= total
 
-        self._save_user_preferences(user)
-        logger.info(f"사용자 {user_id}의 선호도 가중치가 업데이트되었습니다.")
+        # MongoDB 업데이트
+        try:
+            self.users_collection.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "visual_preferences": asdict(user.visual_preferences),
+                        "last_updated": datetime.now().isoformat()
+                    }
+                }
+            )
+            
+            logger.info(f"사용자 {user_id}의 선호도 가중치가 업데이트되었습니다.")
+            
+        except Exception as e:
+            logger.error(f"선호도 가중치 업데이트 실패: {e}")
 
     def should_conduct_periodic_test(self, user_id: str) -> bool:
         """주기적 검사 필요 여부 확인"""
@@ -922,7 +306,7 @@ class UserManager:
         if not user or not user.psychometric_results:
             return True
 
-        last_test = user.psychometric_results[0]  # 가장 최근 검사
+        last_test = user.psychometric_results[-1]  # 가장 최근 검사
         last_test_date = datetime.fromisoformat(last_test.test_date)
 
         # 2주 경과 확인
@@ -932,7 +316,7 @@ class UserManager:
         """현재 대처 스타일 반환"""
         user = self.get_user(user_id)
         if user and user.psychometric_results:
-            return user.psychometric_results[0].coping_style
+            return user.psychometric_results[-1].coping_style
         return "balanced"
 
     def get_user_stats(self, user_id: str) -> Dict[str, Any]:
@@ -950,7 +334,7 @@ class UserManager:
         }
 
         if user.psychometric_results:
-            latest = user.psychometric_results[0]
+            latest = user.psychometric_results[-1]
             stats.update(
                 {
                     "latest_phq9": latest.phq9_score,
@@ -970,3 +354,268 @@ class UserManager:
         )
 
         return stats
+
+    # =================================================================================
+    # GPT 관련 기능들
+    # =================================================================================
+
+    def create_user_gpt_settings(self, user_id: str) -> None:
+        """사용자 GPT 설정 초기화"""
+        now = datetime.now().isoformat()
+        
+        gpt_settings = {
+            "daily_token_limit": 1000,
+            "monthly_cost_limit": 10.0,
+            "current_daily_usage": 0,
+            "current_monthly_cost": 0.0,
+            "last_reset_date": now,
+            "gpt_preferences": {},
+            "notification_settings": {}
+        }
+        
+        try:
+            self.users_collection.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "gpt_settings": gpt_settings,
+                        "last_updated": now
+                    }
+                },
+                upsert=True
+            )
+            
+            logger.info(f"사용자 {user_id}의 GPT 설정이 초기화되었습니다.")
+            
+        except Exception as e:
+            logger.error(f"GPT 설정 초기화 실패: {e}")
+
+    def get_user_gpt_usage(self, user_id: str) -> Dict[str, Any]:
+        """사용자 GPT 사용량 조회"""
+        try:
+            user_doc = self.users_collection.find_one({"user_id": user_id})
+            
+            if not user_doc or "gpt_settings" not in user_doc:
+                # 설정이 없으면 생성
+                self.create_user_gpt_settings(user_id)
+                user_doc = self.users_collection.find_one({"user_id": user_id})
+            
+            gpt_settings = user_doc["gpt_settings"]
+            
+            # 오늘과 이번 달의 실제 사용량 조회 (gpt_usage_log에서)
+            today = datetime.now().strftime("%Y-%m-%d")
+            this_month = datetime.now().strftime("%Y-%m")
+            
+            # 일일 사용량 조회
+            today_usage = list(self.db.gpt_usage_log.aggregate([
+                {"$match": {
+                    "user_id": user_id,
+                    "created_date": {"$regex": f"^{today}"}
+                }},
+                {"$group": {
+                    "_id": None,
+                    "count": {"$sum": 1},
+                    "total_tokens": {"$sum": "$total_tokens"},
+                    "total_cost": {"$sum": "$cost_estimate"}
+                }}
+            ]))
+            
+            # 월간 사용량 조회
+            monthly_usage = list(self.db.gpt_usage_log.aggregate([
+                {"$match": {
+                    "user_id": user_id,
+                    "created_date": {"$regex": f"^{this_month}"}
+                }},
+                {"$group": {
+                    "_id": None,
+                    "count": {"$sum": 1},
+                    "total_tokens": {"$sum": "$total_tokens"},
+                    "total_cost": {"$sum": "$cost_estimate"}
+                }}
+            ]))
+            
+            today_stats = today_usage[0] if today_usage else {"count": 0, "total_tokens": 0, "total_cost": 0.0}
+            monthly_stats = monthly_usage[0] if monthly_usage else {"count": 0, "total_tokens": 0, "total_cost": 0.0}
+            
+            usage_data = {
+                "user_id": user_id,
+                "daily_limit": gpt_settings["daily_token_limit"],
+                "monthly_cost_limit": gpt_settings["monthly_cost_limit"],
+                "current_daily_usage": today_stats["total_tokens"],
+                "current_monthly_cost": monthly_stats["total_cost"],
+                "today_requests": today_stats["count"],
+                "monthly_requests": monthly_stats["count"],
+                "last_reset_date": gpt_settings["last_reset_date"],
+                "usage_percentage": {
+                    "daily": (
+                        (today_stats["total_tokens"] / gpt_settings["daily_token_limit"]) * 100
+                        if gpt_settings["daily_token_limit"] > 0 else 0
+                    ),
+                    "monthly": (
+                        (monthly_stats["total_cost"] / gpt_settings["monthly_cost_limit"]) * 100
+                        if gpt_settings["monthly_cost_limit"] > 0 else 0
+                    ),
+                },
+            }
+            
+            return usage_data
+            
+        except Exception as e:
+            logger.error(f"GPT 사용량 조회 실패: {e}")
+            return {
+                "user_id": user_id,
+                "daily_limit": 1000,
+                "monthly_cost_limit": 10.0,
+                "current_daily_usage": 0,
+                "current_monthly_cost": 0.0,
+                "today_requests": 0,
+                "monthly_requests": 0,
+                "usage_percentage": {"daily": 0, "monthly": 0},
+            }
+
+    def check_usage_limits(self, user_id: str) -> Dict[str, bool]:
+        """사용량 한도 확인"""
+        usage_data = self.get_user_gpt_usage(user_id)
+
+        return {
+            "daily_limit_exceeded": usage_data["current_daily_usage"] >= usage_data["daily_limit"],
+            "monthly_limit_exceeded": usage_data["current_monthly_cost"] >= usage_data["monthly_cost_limit"],
+            "daily_warning": usage_data["usage_percentage"]["daily"] >= 80,
+            "monthly_warning": usage_data["usage_percentage"]["monthly"] >= 80,
+            "can_use_gpt": (
+                usage_data["current_daily_usage"] < usage_data["daily_limit"]
+                and usage_data["current_monthly_cost"] < usage_data["monthly_cost_limit"]
+            ),
+        }
+
+    def log_gpt_usage(
+        self,
+        user_id: str,
+        purpose: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        processing_time: float,
+        cost_estimate: float,
+        success: bool,
+        error_message: str = None,
+        safety_level: str = "safe",
+    ) -> None:
+        """GPT 사용량 로그 기록"""
+        try:
+            usage_log = {
+                "user_id": user_id,
+                "purpose": purpose,
+                "model": model,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": prompt_tokens + completion_tokens,
+                "processing_time": processing_time,
+                "cost_estimate": cost_estimate,
+                "success": success,
+                "error_message": error_message,
+                "safety_level": safety_level,
+                "created_date": datetime.now().isoformat()
+            }
+            
+            self.db.gpt_usage_log.insert_one(usage_log)
+            
+        except Exception as e:
+            logger.error(f"GPT 사용량 로그 기록 실패: {e}")
+
+    def get_gpt_usage_analytics(self, user_id: str, days: int = 30) -> Dict[str, Any]:
+        """GPT 사용량 분석 데이터 조회"""
+        try:
+            start_date = (datetime.now() - timedelta(days=days)).isoformat()
+            
+            # 목적별 사용량
+            purpose_stats = list(self.db.gpt_usage_log.aggregate([
+                {"$match": {
+                    "user_id": user_id,
+                    "created_date": {"$gte": start_date}
+                }},
+                {"$group": {
+                    "_id": "$purpose",
+                    "requests": {"$sum": 1},
+                    "tokens": {"$sum": "$total_tokens"},
+                    "cost": {"$sum": "$cost_estimate"}
+                }}
+            ]))
+            
+            # 일별 사용량
+            daily_usage = list(self.db.gpt_usage_log.aggregate([
+                {"$match": {
+                    "user_id": user_id,
+                    "created_date": {"$gte": start_date}
+                }},
+                {"$group": {
+                    "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$dateFromString": {"dateString": "$created_date"}}}},
+                    "requests": {"$sum": 1},
+                    "tokens": {"$sum": "$total_tokens"}
+                }},
+                {"$sort": {"_id": -1}},
+                {"$limit": 30}
+            ]))
+            
+            # 성공률
+            success_stats = list(self.db.gpt_usage_log.aggregate([
+                {"$match": {
+                    "user_id": user_id,
+                    "created_date": {"$gte": start_date}
+                }},
+                {"$group": {
+                    "_id": None,
+                    "total": {"$sum": 1},
+                    "successful": {"$sum": {"$cond": ["$success", 1, 0]}}
+                }}
+            ]))
+            
+            success_rate = 0
+            if success_stats:
+                total = success_stats[0]["total"]
+                successful = success_stats[0]["successful"]
+                success_rate = successful / total if total > 0 else 0
+            
+            # 결과 포맷팅
+            purpose_breakdown = [
+                {
+                    "purpose": stat["_id"],
+                    "requests": stat["requests"],
+                    "tokens": stat["tokens"],
+                    "cost": stat["cost"]
+                }
+                for stat in purpose_stats
+            ]
+            
+            daily_data = [
+                {
+                    "date": stat["_id"],
+                    "requests": stat["requests"],
+                    "tokens": stat["tokens"]
+                }
+                for stat in daily_usage
+            ]
+            
+            return {
+                "user_id": user_id,
+                "period_days": days,
+                "purpose_breakdown": purpose_breakdown,
+                "daily_usage": daily_data,
+                "success_rate": success_rate,
+                "total_requests": sum(stat["requests"] for stat in purpose_breakdown),
+                "total_tokens": sum(stat["tokens"] for stat in purpose_breakdown),
+                "total_cost": sum(stat["cost"] for stat in purpose_breakdown),
+            }
+            
+        except Exception as e:
+            logger.error(f"GPT 사용량 분석 조회 실패: {e}")
+            return {
+                "user_id": user_id,
+                "period_days": days,
+                "purpose_breakdown": [],
+                "daily_usage": [],
+                "success_rate": 0,
+                "total_requests": 0,
+                "total_tokens": 0,
+                "total_cost": 0.0,
+            }
