@@ -163,7 +163,7 @@ async def generate_reflection_image(
             session_id=session_id,
             image_url=image_url,
             prompt_used=gallery_item.reflection_prompt or "Reflection image",
-            generation_time=30.0
+            generation_time=30.0,
             next_stage=JourneyStage.DEFUSION
         )
         
