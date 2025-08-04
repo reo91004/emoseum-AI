@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # 이 파일은 Level 3 고급 개인화 중 하나인 DRaFT+ 강화학습 모델의 훈련을 담당한다.
-# 사용자의 방명록 피드백과 큐레이터 메시지 반응을 '보상(reward)'으로 사용하여
+# 사용자의 방명록 피드백과 도슨트 메시지 반응을 '보상(reward)'으로 사용하여
 # Stable Diffusion 모델의 UNet을 직접 미세 조정(fine-tuning)한다.
 # 이를 통해 사용자의 선호도에 더 부합하는 이미지를 생성하도록 모델을 점진적으로 개선한다.
 # ==============================================================================
@@ -48,7 +48,7 @@ class DRaFTRewardModel:
 
         # 보상 계산 가중치 (GPT 요소 추가)
         self.reward_weights = {
-            "message_reaction_score": 0.35,  # 큐레이터 메시지 반응 점수
+            "message_reaction_score": 0.35,  # 도슨트 메시지 반응 점수
             "guestbook_sentiment": 0.25,  # 방명록 감정 점수
             "gpt_quality_score": 0.20,  # GPT 생성 품질 점수
             "personalization_score": 0.10,  # 개인화 수준
@@ -231,11 +231,11 @@ class DRaFTPlusTrainer:
         training_data = []
 
         for item in gallery_items:
-            # 완성된 아이템만 사용 (reflection + guestbook + curator_message)
+            # 완성된 아이템만 사용 (reflection + guestbook + docent_message)
             if (
                 item.get("guestbook_title")
                 and item.get("reflection_image_path")
-                and item.get("curator_message")
+                and item.get("docent_message")
             ):
 
                 # GPT 메타데이터 추출
@@ -246,7 +246,7 @@ class DRaFTPlusTrainer:
                     item["guestbook_title"], item.get("guestbook_tags", [])
                 )
 
-                # 큐레이터 메시지 반응 점수 계산
+                # 도슨트 메시지 반응 점수 계산
                 message_reactions = item.get("message_reactions", [])
                 reaction_score = self._calculate_message_reaction_score(
                     message_reactions
@@ -255,7 +255,7 @@ class DRaFTPlusTrainer:
                 # GPT 품질 기반 필터링 - DRaFT+는 모든 데이터를 사용하되 보상 차등화
                 training_sample = {
                     "reflection_prompt": item["reflection_prompt"],
-                    "curator_message": item["curator_message"],
+                    "docent_message": item["docent_message"],
                     "guestbook_sentiment": guestbook_sentiment,
                     "message_reaction_score": reaction_score,
                     "message_reactions": message_reactions,
@@ -277,9 +277,7 @@ class DRaFTPlusTrainer:
 
                 training_data.append(training_sample)
 
-        logger.info(
-            f"DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플"
-        )
+        logger.info(f"DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플")
         return training_data
 
     def prepare_training_data(
@@ -308,7 +306,7 @@ class DRaFTPlusTrainer:
         if item.get("gpt_prompt_tokens"):
             metadata["gpt_tokens_used"] += item["gpt_prompt_tokens"]
 
-        # GPT 큐레이터 토큰 수 추출
+        # GPT 도슨트 토큰 수 추출
         if item.get("gpt_curator_tokens"):
             metadata["gpt_tokens_used"] += item["gpt_curator_tokens"]
 
@@ -316,10 +314,10 @@ class DRaFTPlusTrainer:
         if item.get("prompt_generation_time"):
             metadata["gpt_processing_time"] = item["prompt_generation_time"]
 
-        # 큐레이터 메시지의 개인화 수준 분석
-        curator_message = item.get("curator_message", {})
-        if curator_message and isinstance(curator_message, dict):
-            personalization_data = curator_message.get("personalization_data", {})
+        # 도슨트 메시지의 개인화 수준 분석
+        docent_message = item.get("docent_message", {})
+        if docent_message and isinstance(docent_message, dict):
+            personalization_data = docent_message.get("personalization_data", {})
             if personalization_data:
                 # 개인화 요소 수에 따른 점수 계산
                 elements = personalization_data.get("personalized_elements", {})
@@ -330,9 +328,9 @@ class DRaFTPlusTrainer:
                 if personalization_data.get("coping_style"):
                     metadata["personalization_score"] += 0.2
 
-            # 큐레이터 메시지 참여도 점수 계산
+            # 도슨트 메시지 참여도 점수 계산
             metadata["curator_engagement_score"] = (
-                self._calculate_curator_engagement_score(curator_message)
+                self._calculate_docent_engagement_score(docent_message)
             )
 
         # 프롬프트 품질 점수 추정
@@ -340,10 +338,10 @@ class DRaFTPlusTrainer:
         if prompt:
             metadata["prompt_quality_score"] = self._estimate_prompt_quality(prompt)
 
-        # 큐레이터 메시지 품질 점수 추정
-        if curator_message:
+        # 도슨트 메시지 품질 점수 추정
+        if docent_message:
             metadata["curator_quality_score"] = self._estimate_curator_quality(
-                curator_message
+                docent_message
             )
 
         # 치료적 품질 추정 (메시지 반응 기반)
@@ -384,11 +382,11 @@ class DRaFTPlusTrainer:
 
         return min(1.0, quality_score)
 
-    def _estimate_curator_quality(self, curator_message: Dict[str, Any]) -> float:
-        """큐레이터 메시지 품질 추정"""
+    def _estimate_docent_quality(self, docent_message: Dict[str, Any]) -> float:
+        """도슨트 메시지 품질 추정"""
         quality_score = 0.2  # 기본 점수
 
-        content = curator_message.get("content", {})
+        content = docent_message.get("content", {})
         if content:
             sections = [v for v in content.values() if isinstance(v, str) and v.strip()]
             if len(sections) >= 3:  # 충분한 섹션 수
@@ -408,14 +406,14 @@ class DRaFTPlusTrainer:
         return min(1.0, quality_score)
 
     def _calculate_curator_engagement_score(
-        self, curator_message: Dict[str, Any]
+        self, docent_message: Dict[str, Any]
     ) -> float:
-        """큐레이터 메시지 참여도 점수 계산"""
+        """도슨트 메시지 참여도 점수 계산"""
 
         base_score = 0.3
 
         # 메시지 구조 복잡성
-        content = curator_message.get("content", {})
+        content = docent_message.get("content", {})
         if content:
             sections_count = len(
                 [v for v in content.values() if isinstance(v, str) and v.strip()]
@@ -423,7 +421,7 @@ class DRaFTPlusTrainer:
             base_score += min(0.3, sections_count * 0.1)
 
         # 개인화 데이터 존재 여부
-        personalization_data = curator_message.get("personalization_data", {})
+        personalization_data = docent_message.get("personalization_data", {})
         if personalization_data:
             base_score += 0.2
 
@@ -458,9 +456,9 @@ class DRaFTPlusTrainer:
             return "low"
 
     def calculate_gpt_message_reward(
-        self, curator_message: Dict[str, Any], user_reactions: List[str]
+        self, docent_message: Dict[str, Any], user_reactions: List[str]
     ) -> float:
-        """GPT 큐레이터 메시지 기반 보상 계산"""
+        """GPT 도슨트 메시지 기반 보상 계산"""
 
         base_reward = 0.5
 
@@ -479,7 +477,7 @@ class DRaFTPlusTrainer:
                 base_reward += reaction_bonus
 
         # 메시지 품질 기반 보상
-        content = curator_message.get("content", {})
+        content = docent_message.get("content", {})
         if content:
             # 메시지 완성도
             sections = [v for v in content.values() if isinstance(v, str) and v.strip()]
@@ -487,7 +485,7 @@ class DRaFTPlusTrainer:
             base_reward += completeness_bonus
 
         # 개인화 수준 기반 보상
-        personalization_data = curator_message.get("personalization_data", {})
+        personalization_data = docent_message.get("personalization_data", {})
         if personalization_data:
             personalization_bonus = 0.1
 
@@ -565,7 +563,7 @@ class DRaFTPlusTrainer:
         return max(1.0, min(5.0, base_score + sentiment_adjustment))
 
     def _calculate_message_reaction_score(self, reactions: List[str]) -> float:
-        """큐레이터 메시지 반응 점수 계산"""
+        """도슨트 메시지 반응 점수 계산"""
 
         if not reactions:
             return 3.0  # 기본 중성 점수
@@ -823,9 +821,7 @@ class DRaFTPlusTrainer:
                 },
             }
 
-            logger.info(
-                f"사용자 {user_id}의 DRaFT+ 모델 훈련 완료: {save_path}"
-            )
+            logger.info(f"사용자 {user_id}의 DRaFT+ 모델 훈련 완료: {save_path}")
             return result
 
         except Exception as e:
@@ -959,7 +955,7 @@ class DRaFTPlusTrainer:
     ) -> Tuple[torch.Tensor, float]:
         """DRaFT+ 훈련 스텝"""
 
-        # Reflection 프롬프트 사용 (큐레이터 메시지 맥락 포함)
+        # Reflection 프롬프트 사용 (도슨트 메시지 맥락 포함)
         prompt = sample["reflection_prompt"]
 
         # 프롬프트 인코딩
@@ -1121,7 +1117,7 @@ class DRaFTPlusTrainer:
         """DRaFT+ 훈련 권장사항"""
 
         if data_size < 10:
-            return "더 많은 감정 일기 작성과 큐레이터 메시지 상호작용이 필요합니다."
+            return "더 많은 감정 일기 작성과 도슨트 메시지 상호작용이 필요합니다."
         elif data_size < 30:
             return f"DRaFT+ 훈련까지 {30 - data_size}개의 완성된 여정이 더 필요합니다."
         elif data_size < 50:

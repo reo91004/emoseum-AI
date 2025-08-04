@@ -65,8 +65,8 @@ class PromptEngineer:
             if "visual_mappings" in yaml_data:
                 mappings = yaml_data["visual_mappings"]
                 self.visual_style_mappings = mappings.get("style_mappings", {})
-                self.color_tone_mappings = mappings.get("color_tone_mappings", {})
-                self.complexity_mappings = mappings.get("complexity_mappings", {})
+                self.tone_mood_mappings = mappings.get("tone_mood_mappings", {})
+                self.color_harmony_mappings = mappings.get("color_harmony_mappings", {})
 
             # 안전 키워드 로드
             if "unsafe_keywords" in yaml_data:
@@ -172,7 +172,6 @@ class PromptEngineer:
         except Exception as e:
             logger.error(f"프롬프트 생성 중 오류 발생: {e}")
             return {"success": False, "error": str(e), "prompt": "", "metadata": {}}
-
 
     def _post_process_prompt(
         self, raw_prompt: str, visual_preferences: Dict[str, Any]
@@ -310,18 +309,16 @@ class PromptEngineer:
 
         return "Some content requires attention. Please review the content."
 
-
-
     def generate_transition_guidance(
         self,
         guestbook_title: str,
         emotion_keywords: List[str],
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """큐레이터 전환 안내 질문 생성"""
+        """도슨트 전환 안내 질문 생성"""
 
         try:
-            logger.info(f"큐레이터 전환 안내 질문 생성 시작: {guestbook_title}")
+            logger.info(f"도슨트 전환 안내 질문 생성 시작: {guestbook_title}")
 
             # GPT 서비스를 통해 전환 안내 질문 생성
             gpt_response = self.gpt_service.generate_transition_guidance(
@@ -352,7 +349,7 @@ class PromptEngineer:
                 },
             }
 
-            logger.info(f"큐레이터 전환 안내 질문 생성 완료: {guestbook_title}")
+            logger.info(f"도슨트 전환 안내 질문 생성 완료: {guestbook_title}")
             return result
 
         except Exception as e:

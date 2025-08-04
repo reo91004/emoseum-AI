@@ -35,8 +35,7 @@ class Settings(BaseSettings):
     mongodb_database: str = Field(default="emoseum_main", env="MONGODB_DATABASE")
     
     # Image Generation
-    image_generation_service: str = Field(default="local_gpu", env="IMAGE_GENERATION_SERVICE")
-    external_gpu_endpoint: Optional[str] = Field(default=None, env="EXTERNAL_GPU_ENDPOINT")
+    image_generation_service: str = Field(default="local", env="IMAGE_GENERATION_SERVICE")
     colab_notebook_url: Optional[str] = Field(default=None, env="COLAB_NOTEBOOK_URL")
     
     # OpenAI

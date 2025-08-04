@@ -99,16 +99,16 @@ class GPTErrorHandler:
         )
 
     @staticmethod
-    def handle_curator_failure(
+    def handle_docent_failure(
         operation: str, error: str, user_context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Curator 관련 오류 처리"""
+        """Docent 관련 오류 처리"""
 
         return GPTErrorHandler.handle_gpt_failure(
             error_type="generation_failed",
-            error_message=f"Curator {operation} failed: {error}",
+            error_message=f"Docent {operation} failed: {error}",
             context={
-                "component": "curator",
+                "component": "docent",
                 "operation": operation,
                 "user_id": user_context.get("user_id", "anonymous"),
                 "gallery_item_id": user_context.get("gallery_item_id", "unknown"),

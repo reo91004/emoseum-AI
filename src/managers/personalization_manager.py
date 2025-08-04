@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # 이 파일은 Level 2 개인화, 즉 룰 기반 개인화를 담당한다.
-# 사용자의 방명록 내용(제목, 태그)이나 큐레이터 메시지에 대한 반응을 분석하여
+# 사용자의 방명록 내용(제목, 태그)이나 도슨트 메시지에 대한 반응을 분석하여
 # `src.managers.user_manager.UserManager`에 저장된 사용자의 시각적 선호도 가중치를 업데이트한다.
 # 이를 통해 시스템은 사용자의 암묵적인 피드백을 학습하여 점진적으로 더 개인화된 이미지를 생성하게 된다.
 # ==============================================================================
@@ -137,7 +137,7 @@ class PersonalizationManager:
             "skip": -0.05,
         }
 
-        # 큐레이터 메시지 요소별 키워드
+        # 도슨트 메시지 요소별 키워드
         self.message_element_keywords = {
             "encouragement": ["용기", "대단", "감동", "아름답", "훌륭", "인상적"],
             "growth_recognition": ["성장", "발전", "향상", "변화", "깊이", "이해"],
@@ -186,11 +186,11 @@ class PersonalizationManager:
         self,
         user_id: str,
         reaction_type: str,
-        curator_message: Dict[str, Any],
+        docent_message: Dict[str, Any],
         guestbook_data: Dict[str, Any],
         additional_context: Dict[str, Any] = None,
     ) -> Dict[str, float]:
-        """큐레이터 메시지 반응 기반 선호도 업데이트"""
+        """도슨트 메시지 반응 기반 선호도 업데이트"""
 
         logger.info(f"사용자 {user_id}의 메시지 반응 기반 학습: {reaction_type}")
 
@@ -204,7 +204,7 @@ class PersonalizationManager:
             return {}
 
         # 2. 메시지 내용 분석
-        message_analysis = self._analyze_curator_message(curator_message)
+        message_analysis = self._analyze_docent_message(docent_message)
 
         # 3. 방명록 컨텍스트 분석
         guestbook_analysis = self._analyze_guestbook_context(guestbook_data)
@@ -221,12 +221,10 @@ class PersonalizationManager:
 
         return weight_updates
 
-    def _analyze_curator_message(
-        self, curator_message: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """큐레이터 메시지 내용 분석"""
+    def _analyze_docent_message(self, docent_message: Dict[str, Any]) -> Dict[str, Any]:
+        """도슨트 메시지 내용 분석"""
 
-        content = curator_message.get("content", {})
+        content = docent_message.get("content", {})
         if not content:
             return {}
 
@@ -249,7 +247,7 @@ class PersonalizationManager:
                     analysis["tone_indicators"].append(tone)
 
         # 개인화 수준 계산
-        personalization_data = curator_message.get("personalization_data", {})
+        personalization_data = docent_message.get("personalization_data", {})
         analysis["personalization_level"] = self._calculate_personalization_level(
             personalization_data
         )
@@ -338,7 +336,14 @@ class PersonalizationManager:
             ),
             "has_emotion": any(
                 word in title_lower
-                for word in ["joy", "sadness", "anger", "peace", "anxiety", "loneliness"]
+                for word in [
+                    "joy",
+                    "sadness",
+                    "anger",
+                    "peace",
+                    "anxiety",
+                    "loneliness",
+                ]
             ),
         }
 
@@ -603,7 +608,6 @@ class PersonalizationManager:
             "personalization_preference": "high",
         }
 
-
     def export_user_learning_data(self, user_id: str) -> Dict[str, Any]:
         """사용자 학습 데이터 내보내기 (Level 3 학습용)"""
         user = self.user_manager.get_user(user_id)
@@ -632,7 +636,7 @@ class PersonalizationManager:
         # 대처 스타일 기반 권장사항
         if coping_style == "avoidant":
             recommendations["prompt_style"] = "더 부드럽고 은유적인 표현 사용"
-            recommendations["message_guidance"] = "간접적이고 보호적인 큐레이터 메시지"
+            recommendations["message_guidance"] = "간접적이고 보호적인 도슨트 메시지"
         elif coping_style == "confrontational":
             recommendations["prompt_style"] = "더 직설적이고 명확한 감정 표현"
             recommendations["message_guidance"] = "직접적이고 용기를 강조하는 메시지"

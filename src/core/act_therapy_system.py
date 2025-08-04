@@ -19,8 +19,10 @@ from ..managers.user_manager import UserManager, PsychometricResult
 from ..therapy.prompt_architect import PromptArchitect
 from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
+from ..services.image_service_wrapper import ColabImageGenerator, ExternalImageGenerator
+from ..services.emotion_analyzer import get_emotion_analyzer
 from ..managers.gallery_manager import GalleryManager, GalleryItem
-from ..therapy.curator_message import CuratorMessageSystem
+from ..therapy.docent_message import DocentMessageSystem
 
 import os
 import requests
@@ -52,7 +54,10 @@ class ACTTherapySystem:
         # MongoDB 기반 컴포넌트 초기화
         self.user_manager = UserManager(mongodb_client)
         self.personalization_manager = PersonalizationManager(self.user_manager)
-        self.image_generator = ImageGenerator(model_path)
+        
+        # 이미지 생성 서비스 초기화 (환경변수에 따라 선택)
+        self._initialize_image_service(model_path)
+        
         self.gallery_manager = GalleryManager(mongodb_client)
 
         # GPT 서비스들 초기화
@@ -60,12 +65,42 @@ class ACTTherapySystem:
 
         # 컴포넌트들 초기화
         self.prompt_architect = PromptArchitect()
-        self.curator_message_system = CuratorMessageSystem(self.user_manager)
+        self.docent_message_system = DocentMessageSystem(self.user_manager)
 
         # GPT 서비스들 주입
         self._inject_gpt_services()
 
         logger.info("ACT 치료 시스템 초기화 완료")
+
+    def _initialize_image_service(self, model_path: str):
+        """이미지 생성 서비스 초기화 (환경변수에 따라 선택)"""
+        
+        # 환경변수에서 이미지 생성 서비스 타입 확인
+        service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local")
+        
+        try:
+            if service_type == "colab":
+                # Colab 서비스 사용
+                logger.info("Colab 이미지 생성 서비스를 초기화합니다...")
+                colab_notebook_url = os.getenv("COLAB_NOTEBOOK_URL")
+                if not colab_notebook_url:
+                    logger.warning("COLAB_NOTEBOOK_URL이 설정되지 않았습니다. local로 대체합니다.")
+                    service_type = "local"
+                else:
+                    # Colab용 래퍼 클래스 사용
+                    self.image_generator = ColabImageGenerator(colab_notebook_url)
+                    logger.info("Colab 이미지 생성 서비스 초기화 완료")
+                    return
+            
+            # local 또는 기본값
+            logger.info("로컬 이미지 생성 서비스를 초기화합니다...")
+            self.image_generator = ImageGenerator(model_path)
+            logger.info("로컬 이미지 생성 서비스 초기화 완료")
+                
+        except Exception as e:
+            logger.error(f"이미지 생성 서비스 초기화 실패: {e}")
+            logger.info("기본 로컬 GPU 서비스로 대체합니다...")
+            self.image_generator = ImageGenerator(model_path)
 
     def _initialize_gpt_services(self):
         """GPT 서비스들 초기화"""
@@ -73,7 +108,7 @@ class ACTTherapySystem:
         try:
             from ..services.gpt_service import GPTService
             from ..ai.prompt_engineer import PromptEngineer
-            from ..ai.curator_gpt import CuratorGPT
+            from ..ai.docent_gpt import DocentGPT
             from ..utils.safety_validator import SafetyValidator
             from ..utils.cost_tracker import CostTracker
 
@@ -93,7 +128,7 @@ class ACTTherapySystem:
             self.prompt_engineer = PromptEngineer(
                 self.gpt_service, gpt_prompts_path=gpt_prompts_path
             )
-            self.curator_gpt = CuratorGPT(
+            self.docent_gpt = DocentGPT(
                 self.gpt_service,
                 self.safety_validator,
                 gpt_prompts_path=gpt_prompts_path,
@@ -114,7 +149,7 @@ class ACTTherapySystem:
         try:
             self.prompt_architect.set_prompt_engineer(self.prompt_engineer)
             self.prompt_architect.set_safety_validator(self.safety_validator)
-            self.curator_message_system.set_curator_gpt(self.curator_gpt)
+            self.docent_message_system.set_docent_gpt(self.docent_gpt)
             logger.info("모든 GPT 서비스 주입이 완료되었습니다.")
 
         except Exception as e:
@@ -272,28 +307,52 @@ class ACTTherapySystem:
     def _analyze_emotion_with_gpt(
         self, diary_text: str, user_id: str = "anonymous"
     ) -> Dict[str, Any]:
-        """GPT를 통한 감정 분석"""
+        """감정 분석 (환경변수에 따라 GoEmotions 또는 GPT 사용)"""
+        
+        # 환경변수에서 감정 분석 서비스 확인
+        analysis_service = os.getenv("EMOTION_ANALYSIS_SERVICE", "local")
+        
         try:
-            # GPT로 감정 분석 요청
-            analysis_result = self.gpt_service.analyze_emotion(
-                diary_text, user_id=user_id
-            )
-
-            if analysis_result["success"]:
+            if analysis_service in ["local", "colab"]:
+                # GoEmotions 분석기 사용 (로컬 또는 Colab)
+                service_type = "local_goEmotions" if analysis_service == "local" else "colab_goEmotions"
+                emotion_analyzer = get_emotion_analyzer(service_type)
+                analysis_result = emotion_analyzer.analyze_emotions(diary_text)
+                
+                logger.info(f"{analysis_service} GoEmotions 감정 분석 결과: {analysis_result}")
+                
                 return {
                     "diary_text": diary_text,
-                    "keywords": analysis_result.get("keywords", ["neutral"]),
-                    "vad_scores": analysis_result.get("vad_scores", (0.0, 0.0, 0.0)),
-                    "analysis_confidence": analysis_result.get("confidence", 0.8),
-                    "generation_method": "gpt",
+                    "keywords": analysis_result["keywords"],
+                    "vad_scores": analysis_result["vad_scores"],
+                    "analysis_confidence": analysis_result["confidence"],
+                    "generation_method": f"{analysis_service}_goEmotions",
+                    "primary_emotion": analysis_result["primary_emotion"],
+                    "emotional_intensity": analysis_result["emotional_intensity"],
+                    "top_emotions": analysis_result.get("top_emotions", {})
                 }
+            
             else:
-                raise RuntimeError(
-                    f"GPT 감정 분석 실패: {analysis_result.get('error', 'Unknown error')}"
+                # GPT 분석기 사용 (기존 방식)
+                analysis_result = self.gpt_service.analyze_emotion(
+                    diary_text, user_id=user_id
                 )
 
+                if analysis_result["success"]:
+                    return {
+                        "diary_text": diary_text,
+                        "keywords": analysis_result.get("keywords", ["neutral"]),
+                        "vad_scores": analysis_result.get("vad_scores", (0.0, 0.0, 0.0)),
+                        "analysis_confidence": analysis_result.get("confidence", 0.8),
+                        "generation_method": "gpt",
+                    }
+                else:
+                    raise RuntimeError(
+                        f"GPT 감정 분석 실패: {analysis_result.get('error', 'Unknown error')}"
+                    )
+
         except Exception as e:
-            logger.error(f"GPT 감정 분석 실패: {e}")
+            logger.error(f"감정 분석 실패 (서비스: {analysis_service}): {e}")
             raise
 
     def upload_image_to_supabase(self, image, user_id, prefix="generated/"):
@@ -339,53 +398,51 @@ class ACTTherapySystem:
                 visual_preferences=user.visual_preferences.__dict__,
                 user_id=user.user_id,
             )
+
+
+            # 환경변수에 따라 설정된 이미지 생성 서비스 사용
+            service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local")
             
-            ## 기본 이미지로 설정
-            # print("이미지 생성 생략, fallback 이미지로 대체")
-            # fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
-            # fallback_image = Image.open(fallback_image_path)
-            # image_url = self.upload_image_to_supabase(fallback_image, user.user_id, prefix="generated/")
-
-
-            # Colab을 통한 이미지 생성 시도
-            try:
-                import httpx
-                import base64
-                from io import BytesIO
+            if service_type == "local":
+                # 로컬 서비스 (ImageGenerator)
+                generation_result = self.image_generator.generate_image(
+                    prompt=reflection_prompt,
+                    width=512,
+                    height=512,
+                    num_inference_steps=20,
+                    guidance_scale=7.5
+                )
                 
-                colab_url = os.getenv('COLAB_NOTEBOOK_URL')
-                if colab_url:
-                    payload = {"prompt": reflection_prompt}
-                    
-                    with httpx.Client(timeout=120.0) as client:
-                        response = client.post(f"{colab_url}/generate", json=payload)
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                # Base64 이미지를 PIL Image로 변환
-                                img_data = base64.b64decode(result["image"])
-                                final_image = Image.open(BytesIO(img_data))
-                                image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
-                                print(f"Colab 이미지 생성 성공")
-                            else:
-                                raise Exception("Colab generation failed")
-                        else:
-                            raise Exception(f"HTTP {response.status_code}")
+                if generation_result.get("success"):
+                    final_image = generation_result["image"]
+                    image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+                    print(f"이미지 생성 성공 (서비스: local)")
                 else:
-                    raise Exception("COLAB_NOTEBOOK_URL not set")
+                    raise Exception(generation_result.get('error', 'Unknown error'))
                     
-            except Exception as e:
-                print(f"이미지 생성 실패, fallback 이미지로 대체: {e}")
-                fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
-                final_image = Image.open(fallback_image_path)
-                image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+            else:
+                # Colab 서비스 (래퍼 클래스)
+                generation_result = self.image_generator.generate_image(
+                    prompt=reflection_prompt,
+                    output_dir="data/gallery_images/reflection",
+                    filename=f"reflection_{user.user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                )
+                
+                if generation_result.get("success"):
+                    # 생성된 이미지를 Supabase에 업로드
+                    image_path = generation_result["image_path"]
+                    with Image.open(image_path) as final_image:
+                        image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+                    
+                    print(f"이미지 생성 성공 (서비스: {generation_result.get('service', service_type)})")
+                else:
+                    raise Exception(generation_result.get('error', 'Unknown error'))
 
             return {
                 "prompt": reflection_prompt,
-                "image": final_image,
+                "image": final_image if 'final_image' in locals() else None,
                 "image_path": image_url,
-                "generation_time": 30.0,
+                "generation_time": generation_result.get("generation_time", 30.0) if 'generation_result' in locals() else 30.0,
                 "prompt_tokens": 0,
                 "safety_validated": True,
             }
@@ -395,71 +452,6 @@ class ACTTherapySystem:
             raise
 
 
-    # def _create_gpt_reflection_image(
-    #     self, user, emotion_analysis: Dict[str, Any], diary_text: str
-    # ) -> Dict[str, Any]:
-    #     """GPT를 통한 Reflection 이미지 생성"""
-
-    #     coping_style = "balanced"
-    #     if user.psychometric_results:
-    #         coping_style = user.psychometric_results[0].coping_style
-
-    #     self.prompt_architect.set_diary_context(diary_text)
-
-    #     try:
-    #         reflection_prompt = self.prompt_architect.create_reflection_prompt(
-    #             emotion_keywords=emotion_analysis["keywords"],
-    #             vad_scores=emotion_analysis["vad_scores"],
-    #             coping_style=coping_style,
-    #             visual_preferences=user.visual_preferences.__dict__,
-    #             user_id=user.user_id,
-    #         )
-
-    #         generation_result = self.image_generator.generate_image(
-    #             prompt=reflection_prompt,
-    #             width=512,
-    #             height=512,
-    #             num_inference_steps=20,
-    #             guidance_scale=7.5,
-    #         )
-
-    #         # if not generation_result["success"]:
-    #         #     raise RuntimeError(f"이미지 생성 실패: {generation_result['error']}")
-
-    #         generation_result["success"] = False
-    #         generation_result["error"] = "이미지 생성 강제 실패 (CPU fallback 모드)"
-
-    #         if generation_result["success"]:
-    #             image = generation_result["image"]
-    #             image_url = self.upload_image_to_supabase(image, user.user_id, prefix="generated/")
-
-    #             return {
-    #                 "prompt": reflection_prompt,
-    #                 "image": image,
-    #                 "image_path": image_url,
-    #                 "generation_time": generation_result["metadata"]["generation_time"],
-    #                 "prompt_tokens": 0,
-    #                 "safety_validated": True,
-    #             }
-
-    #         else:
-    #             print(f"이미지 생성 실패, fallback 이미지로 대체: {generation_result['error']}")
-    #             fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
-    #             fallback_image = Image.open(fallback_image_path)
-    #             image_url = self.upload_image_to_supabase(fallback_image, user.user_id, prefix="generated/")
-
-    #             return {
-    #                 "prompt": reflection_prompt,
-    #                 "image": fallback_image,
-    #                 "image_path": image_url,
-    #                 "generation_time": 0.0,
-    #                 "prompt_tokens": 0,
-    #                 "safety_validated": True,
-    #             }
-
-    #     except Exception as e:
-    #         logger.error(f"이미지 생성 중 예외 발생: {e}")
-    #         raise
 
     def complete_guestbook(
         self,
@@ -506,20 +498,20 @@ class ACTTherapySystem:
                 "guided_question": guided_question,
             },
             "personalization_updates": personalization_updates,
-            "next_step": "curator_message",
+            "next_step": "docent_message",
             "guided_question": guided_question,
-            "gpt_curator_ready": True,
+            "gpt_docent_ready": True,
         }
 
         logger.info(f"방명록 작성 완료: {guestbook_title}")
         return guestbook_result
 
-    def create_curator_message(
+    def create_docent_message(
         self, user_id: str, gallery_item_id: str
     ) -> Dict[str, Any]:
-        """ACT 4단계: Closure (큐레이터 메시지 생성)"""
+        """ACT 4단계: Closure (도슨트 메시지 생성)"""
 
-        logger.info(f"사용자 {user_id} 큐레이터 메시지 생성: 아이템 {gallery_item_id}")
+        logger.info(f"사용자 {user_id} 도슨트 메시지 생성: 아이템 {gallery_item_id}")
 
         try:
             gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
@@ -528,23 +520,23 @@ class ACTTherapySystem:
 
             user = self.user_manager.get_user(user_id)
 
-            curator_message = self.curator_message_system.create_personalized_message(
+            docent_message = self.docent_message_system.create_personalized_message(
                 user=user,
                 gallery_item=gallery_item,
             )
 
-            success = self.gallery_manager.add_curator_message(
-                gallery_item_id, curator_message
+            success = self.gallery_manager.add_docent_message(
+                gallery_item_id, docent_message
             )
 
             if not success:
-                raise RuntimeError("큐레이터 메시지 저장에 실패했습니다.")
+                raise RuntimeError("도슨트 메시지 저장에 실패했습니다.")
 
-            curator_result = {
+            docent_result = {
                 "user_id": user_id,
                 "gallery_item_id": gallery_item_id,
                 "step": "closure_complete",
-                "curator_message": curator_message,
+                "docent_message": docent_message,
                 "journey_complete": True,
                 "completion_message": "감정의 여정이 완성되었습니다.",
                 "next_recommendations": [
@@ -554,18 +546,18 @@ class ACTTherapySystem:
                 ],
                 "gpt_metadata": {
                     "generation_method": "gpt",
-                    "personalization_level": curator_message.get("metadata", {}).get(
+                    "personalization_level": docent_message.get("metadata", {}).get(
                         "personalization_level", 0
                     ),
                     "safety_validated": True,
                 },
             }
 
-            logger.info(f"큐레이터 메시지 생성 완료: 아이템 {gallery_item_id}")
-            return curator_result
+            logger.info(f"도슨트 메시지 생성 완료: 아이템 {gallery_item_id}")
+            return docent_result
 
         except Exception as e:
-            logger.error(f"큐레이터 메시지 생성 실패: {e}")
+            logger.error(f"도슨트 메시지 생성 실패: {e}")
             raise
 
     def record_message_reaction(
@@ -575,7 +567,7 @@ class ACTTherapySystem:
         reaction_type: str,
         reaction_data: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        """큐레이터 메시지에 대한 사용자 반응 기록"""
+        """도슨트 메시지에 대한 사용자 반응 기록"""
 
         logger.info(f"사용자 {user_id} 메시지 반응 기록: {reaction_type}")
 
@@ -596,7 +588,7 @@ class ACTTherapySystem:
                 self.personalization_manager.update_preferences_from_message_reaction(
                     user_id=user_id,
                     reaction_type=reaction_type,
-                    curator_message=gallery_item.curator_message,
+                    docent_message=gallery_item.docent_message,
                     guestbook_data={
                         "title": gallery_item.guestbook_title,
                         "tags": gallery_item.guestbook_tags,
@@ -643,7 +635,7 @@ class ACTTherapySystem:
                 "total_tokens": cost_stats.get("total_tokens", 0),
                 "total_cost": cost_stats.get("total_cost", 0.0),
                 "prompt_generations": cost_stats.get("prompt_calls", 0),
-                "curator_generations": cost_stats.get("curator_calls", 0),
+                "docent_generations": cost_stats.get("docent_calls", 0),
                 "avg_generation_time": cost_stats.get("avg_generation_time", 0.0),
             }
         except Exception as e:
@@ -690,20 +682,20 @@ class ACTTherapySystem:
     def _analyze_gpt_performance(self, user_id: str) -> Dict[str, Any]:
         """GPT 성능 분석"""
         try:
-            curator_performance = (
-                self.curator_message_system.get_gpt_performance_metrics(user_id)
+            docent_performance = (
+                self.docent_message_system.get_gpt_performance_metrics(user_id)
             )
             cost_data = self.cost_tracker.get_user_usage_summary(user_id)
 
             return {
-                "curator_effectiveness": curator_performance.get("quality_score", 0),
-                "personalization_level": curator_performance.get(
+                "docent_effectiveness": docent_performance.get("quality_score", 0),
+                "personalization_level": docent_performance.get(
                     "personalization_score", 0
                 ),
                 "cost_efficiency": cost_data.get("cost_per_generation", 0),
-                "generation_success_rate": curator_performance.get("success_rate", 1.0),
+                "generation_success_rate": docent_performance.get("success_rate", 1.0),
                 "optimization_suggestions": self._generate_gpt_optimization_suggestions(
-                    curator_performance
+                    docent_performance
                 ),
             }
         except Exception as e:
@@ -719,7 +711,7 @@ class ACTTherapySystem:
         quality_score = performance.get("quality_score", 0)
         if quality_score < 0.7:
             suggestions.append(
-                "큐레이터 메시지 품질을 위한 프롬프트 엔지니어링 필요"
+                "도슨트 메시지 품질을 위한 프롬프트 엔지니어링 필요"
             )
 
         personalization_score = performance.get("personalization_score", 0)
@@ -745,7 +737,7 @@ class ACTTherapySystem:
             complete_journeys = [
                 item.to_dict()
                 for item in gallery_items
-                if item.guestbook_title and item.curator_message
+                if item.guestbook_title and item.docent_message
             ]
 
             results = {}
@@ -798,7 +790,7 @@ class ACTTherapySystem:
         complete_journeys = [
             item
             for item in gallery_items
-            if item.guestbook_title and item.curator_message
+            if item.guestbook_title and item.docent_message
         ]
 
         from ..training.lora_trainer import PersonalizedLoRATrainer
@@ -998,10 +990,10 @@ class ACTTherapySystem:
                 "gallery_manager": self.gallery_manager is not None,
                 "cost_tracker": hasattr(self, "cost_tracker") and self.cost_tracker is not None,
                 "prompt_architect": self.prompt_architect.get_system_status(),
-                "curator_message": self.curator_message_system.get_system_status(),
+                "docent_message": self.docent_message_system.get_system_status(),
                 "gpt_service": hasattr(self, "gpt_service") and self.gpt_service is not None,
                 "prompt_engineer": hasattr(self, "prompt_engineer") and self.prompt_engineer is not None,
-                "curator_gpt": hasattr(self, "curator_gpt") and self.curator_gpt is not None,
+                "docent_gpt": hasattr(self, "docent_gpt") and self.docent_gpt is not None,
                 "safety_validator": hasattr(self, "safety_validator") and self.safety_validator is not None,
             },
             "sqlite_files": 0,

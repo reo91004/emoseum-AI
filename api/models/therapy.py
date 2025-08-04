@@ -38,7 +38,7 @@ class GuestbookEntry(BaseModel):
     reflection: str
 
 
-class CuratorMessage(BaseModel):
+class DocentMessage(BaseModel):
     message: str
     message_type: str
     personalization_data: Dict[str, Any] = Field(default_factory=dict)
@@ -89,9 +89,9 @@ class GuestbookResponse(BaseModel):
     next_stage: JourneyStage
 
 
-class CuratorMessageResponse(BaseModel):
+class DocentMessageResponse(BaseModel):
     session_id: str
-    curator_message: CuratorMessage
+    docent_message: DocentMessage
     journey_completed: bool = True
 
 
@@ -105,4 +105,4 @@ class TherapySessionDetailResponse(BaseModel):
     emotion_analysis: Optional[EmotionAnalysis] = None
     generated_image: Optional[GeneratedImage] = None
     guestbook_entry: Optional[GuestbookEntry] = None
-    curator_message: Optional[CuratorMessage] = None
+    docent_message: Optional[DocentMessage] = None

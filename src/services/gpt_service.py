@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # 이 파일은 OpenAI의 GPT API와의 모든 통신을 담당하는 핵심 서비스이다.
-# `prompt_engineer`, `curator_gpt` 등 다른 AI 관련 모듈로부터 요청을 받아,
+# `prompt_engineer`, `docent_gpt` 등 다른 AI 관련 모듈로부터 요청을 받아,
 # `config/gpt_prompts.yaml`에서 정의된 템플릿을 사용하여 API에 전달할 최종 메시지를 구성하고 API를 호출한다.
 # 또한, `cost_tracker`를 통해 API 사용량과 비용을 기록하는 역할도 수행한다.
 # ==============================================================================
@@ -177,7 +177,7 @@ class GPTService:
             "requires_manual_intervention": True,
         }
 
-    def generate_curator_message(
+    def generate_docent_message(
         self,
         user_profile: Dict[str, Any],
         gallery_item: Dict[str, Any],
@@ -185,15 +185,15 @@ class GPTService:
         user_id: str = "anonymous",
         **kwargs,
     ) -> Dict[str, Any]:
-        """개인화된 큐레이터 메시지 생성"""
+        """개인화된 도슨트 메시지 생성"""
 
         # 시스템 메시지 구성
-        system_message = self._create_curator_system_message(
+        system_message = self._create_docent_system_message(
             user_profile.get("coping_style", "balanced"), personalization_context
         )
 
         # 사용자 메시지 구성
-        user_message = self._create_curator_user_message(user_profile, gallery_item)
+        user_message = self._create_docent_user_message(user_profile, gallery_item)
 
         # GPT API 호출
         messages = [
@@ -205,13 +205,13 @@ class GPTService:
             messages=messages,
             max_tokens=kwargs.get("max_tokens", 500),
             temperature=kwargs.get("temperature", 0.8),
-            purpose="curator_message",
+            purpose="docent_message",
             user_id=user_id,
         )
 
         if response["success"]:
             # 메시지 구조화
-            structured_message = self._structure_curator_message(
+            structured_message = self._structure_docent_message(
                 response["content"], user_profile, gallery_item
             )
 
@@ -226,7 +226,7 @@ class GPTService:
 
         return {
             "success": False,
-            "error": response.get("error", "큐레이터 메시지 생성 실패"),
+            "error": response.get("error", "도슨트 메시지 생성 실패"),
             "retry_recommended": True,
             "requires_manual_intervention": True,
         }
@@ -238,7 +238,7 @@ class GPTService:
         user_id: str = "anonymous",
         **kwargs,
     ) -> Dict[str, Any]:
-        """큐레이터 전환을 위한 안내 질문 생성"""
+        """도슨트 전환을 위한 안내 질문 생성"""
 
         system_message = self.prompt_templates["system_message_templates"][
             "transition_guidance"
@@ -499,26 +499,26 @@ Coping style: {coping_style}"""
             diary_text=diary_text, emotion_keywords=", ".join(emotion_keywords)
         )
 
-    def _create_curator_system_message(
+    def _create_docent_system_message(
         self, coping_style: str, personalization_context: Dict[str, Any]
     ) -> str:
-        """큐레이터 메시지용 시스템 메시지 생성"""
+        """도슨트 메시지용 시스템 메시지 생성"""
 
-        # YAML에서 큐레이터 시스템 메시지 가져오기
-        curator_data = self.prompt_templates["curator_messages"]
-        base_message = curator_data[coping_style]["system_message"]
+        # YAML에서 도슨트 시스템 메시지 가져오기
+        docent_data = self.prompt_templates["docent_messages"]
+        base_message = docent_data[coping_style]["system_message"]
 
         # 추가 컨텍스트 정보 첨부
         return f"""{base_message}
 
 Personalization context: {personalization_context}
-Tone: {curator_data[coping_style].get('tone', 'balanced')}"""
+Tone: {docent_data[coping_style].get('tone', 'balanced')}"""
 
-    def _create_curator_user_message(
+    def _create_docent_user_message(
         self, user_profile: Dict[str, Any], gallery_item: Dict[str, Any]
     ) -> str:
-        """큐레이터 메시지용 사용자 메시지 생성"""
-        template = self.prompt_templates["user_message_templates"]["curator_message"]
+        """도슨트 메시지용 사용자 메시지 생성"""
+        template = self.prompt_templates["user_message_templates"]["docent_message"]
         return template.format(
             user_nickname=user_profile.get("user_id", "friend"),
             coping_style=user_profile.get("coping_style", "balanced"),
@@ -529,13 +529,13 @@ Tone: {curator_data[coping_style].get('tone', 'balanced')}"""
             guestbook_tags=gallery_item.get("guestbook_tags", []),
         )
 
-    def _structure_curator_message(
+    def _structure_docent_message(
         self,
         raw_content: str,
         user_profile: Dict[str, Any],
         gallery_item: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """큐레이터 메시지 구조화 - YAML 설정 기반"""
+        """도슨트 메시지 구조화 - YAML 설정 기반"""
         # YAML에서 메시지 구조 설정 가져오기
         message_structure = self.prompt_templates.get("message_structure", {})
         five_section_format = message_structure.get("five_section_format", {})

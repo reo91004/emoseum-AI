@@ -131,7 +131,7 @@ class PersonalizedLoRATrainer:
             # 완성된 아이템 + GPT 메타데이터가 있는 것만 사용
             if (
                 item.get("guestbook_title")
-                and item.get("curator_message")
+                and item.get("docent_message")
                 and item.get("reflection_image_path")
                 and Path(item["reflection_image_path"]).exists()
             ):
@@ -139,7 +139,7 @@ class PersonalizedLoRATrainer:
                 # GPT 메타데이터 추출
                 gpt_metadata = self._extract_gpt_metadata(item)
 
-                # 큐레이터 메시지에 대한 사용자 반응 분석
+                # 도슨트 메시지에 대한 사용자 반응 분석
                 message_reactions = item.get("message_reactions", [])
                 reaction_score = self._calculate_reaction_score(message_reactions)
 
@@ -154,7 +154,7 @@ class PersonalizedLoRATrainer:
                         "image_path": item["reflection_image_path"],
                         "reaction_score": reaction_score,
                         "guestbook_title": item["guestbook_title"],
-                        "curator_message": item["curator_message"],
+                        "docent_message": item["docent_message"],
                         "message_reactions": message_reactions,
                         "tags": item.get("guestbook_tags", []),
                         "emotion_keywords": item.get("emotion_keywords", []),
@@ -203,7 +203,7 @@ class PersonalizedLoRATrainer:
         if item.get("gpt_prompt_tokens"):
             metadata["gpt_tokens_used"] += item["gpt_prompt_tokens"]
 
-        # GPT 큐레이터 토큰 수 추출
+        # GPT 도슨트 토큰 수 추출
         if item.get("gpt_curator_tokens"):
             metadata["gpt_tokens_used"] += item["gpt_curator_tokens"]
 
@@ -211,10 +211,10 @@ class PersonalizedLoRATrainer:
         if item.get("prompt_generation_time"):
             metadata["gpt_processing_time"] = item["prompt_generation_time"]
 
-        # 큐레이터 메시지의 개인화 수준 분석
-        curator_message = item.get("curator_message", {})
-        if curator_message and isinstance(curator_message, dict):
-            personalization_data = curator_message.get("personalization_data", {})
+        # 도슨트 메시지의 개인화 수준 분석
+        docent_message = item.get("docent_message", {})
+        if docent_message and isinstance(docent_message, dict):
+            personalization_data = docent_message.get("personalization_data", {})
             if personalization_data:
                 # 개인화 요소 수에 따른 점수 계산
                 elements = personalization_data.get("personalized_elements", {})
@@ -240,9 +240,9 @@ class PersonalizedLoRATrainer:
             ):
                 metadata["prompt_quality_score"] += 0.2
 
-        # 큐레이터 메시지 품질 점수 추정
-        if curator_message:
-            content = curator_message.get("content", {})
+        # 도슨트 메시지 품질 점수 추정
+        if docent_message:
+            content = docent_message.get("content", {})
             if content:
                 sections = [
                     v for v in content.values() if isinstance(v, str) and v.strip()
@@ -547,7 +547,7 @@ class PersonalizedLoRATrainer:
                             sample.get("training_weight", 1.0)
                         )
 
-                        # 큐레이터 메시지 참여도 계산
+                        # 도슨트 메시지 참여도 계산
                         engagement = self._calculate_curator_engagement(sample)
                         training_metrics["curator_engagement"].append(engagement)
 
@@ -713,9 +713,9 @@ class PersonalizedLoRATrainer:
         return weighted_loss
 
     def _calculate_curator_engagement(self, sample: Dict[str, Any]) -> float:
-        """큐레이터 메시지 참여도 계산"""
+        """도슨트 메시지 참여도 계산"""
 
-        curator_message = sample.get("curator_message", {})
+        docent_message = sample.get("docent_message", {})
         message_reactions = sample.get("message_reactions", [])
 
         # 기본 참여도 점수
@@ -734,8 +734,8 @@ class PersonalizedLoRATrainer:
                 positive_ratio = positive_reactions / total_reactions
                 base_engagement += positive_ratio * 0.5
 
-        # 큐레이터 메시지 개인화 수준 고려
-        personalization_data = curator_message.get("personalization_data", {})
+        # 도슨트 메시지 개인화 수준 고려
+        personalization_data = docent_message.get("personalization_data", {})
         if personalization_data:
             personalization_level = personalization_data.get(
                 "personalized_elements", {}
@@ -856,7 +856,7 @@ class PersonalizedLoRATrainer:
         """훈련 권장사항"""
 
         if data_size < 20:
-            return "더 많은 감정 일기 작성과 큐레이터 메시지 상호작용이 필요합니다."
+            return "더 많은 감정 일기 작성과 도슨트 메시지 상호작용이 필요합니다."
         elif data_size < 50:
             return f"훈련까지 {50 - data_size}개의 긍정적 메시지 반응이 더 필요합니다."
         elif data_size < 100:
@@ -901,9 +901,7 @@ class PersonalizedLoRATrainer:
                 # GPT 관련 정보 추출
                 gpt_integration = metadata.get("gpt_integration", {})
                 if gpt_integration:
-                    info["gpt_integrated"] = gpt_integration.get(
-                        "gpt_training", False
-                    )
+                    info["gpt_integrated"] = gpt_integration.get("gpt_training", False)
                     info["quality_correlation"] = gpt_integration.get(
                         "quality_correlation", 0.0
                     )

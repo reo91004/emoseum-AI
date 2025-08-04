@@ -109,7 +109,7 @@ GALLERY_ITEM_SCHEMA = {
         "tags": List[str],
         "reflection": str
     },
-    "curator_message": {
+    "docent_message": {
         "message": str,
         "message_type": str,
         "personalization_data": Dict[str, Any]
