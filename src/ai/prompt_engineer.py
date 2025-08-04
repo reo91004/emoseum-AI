@@ -65,8 +65,8 @@ class PromptEngineer:
             if "visual_mappings" in yaml_data:
                 mappings = yaml_data["visual_mappings"]
                 self.visual_style_mappings = mappings.get("style_mappings", {})
-                self.color_tone_mappings = mappings.get("color_tone_mappings", {})
-                self.complexity_mappings = mappings.get("complexity_mappings", {})
+                self.tone_mood_mappings = mappings.get("tone_mood_mappings", {})
+                self.color_harmony_mappings = mappings.get("color_harmony_mappings", {})
 
             # 안전 키워드 로드
             if "unsafe_keywords" in yaml_data:
