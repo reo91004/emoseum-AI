@@ -20,7 +20,7 @@ from ..therapy.prompt_architect import PromptArchitect
 from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
 from ..managers.gallery_manager import GalleryManager, GalleryItem
-from ..therapy.curator_message import CuratorMessageSystem
+from ..therapy.docent_message import DocentMessageSystem
 
 import os
 import requests
@@ -60,7 +60,7 @@ class ACTTherapySystem:
 
         # 컴포넌트들 초기화
         self.prompt_architect = PromptArchitect()
-        self.curator_message_system = CuratorMessageSystem(self.user_manager)
+        self.docent_message_system = DocentMessageSystem(self.user_manager)
 
         # GPT 서비스들 주입
         self._inject_gpt_services()
@@ -73,7 +73,7 @@ class ACTTherapySystem:
         try:
             from ..services.gpt_service import GPTService
             from ..ai.prompt_engineer import PromptEngineer
-            from ..ai.curator_gpt import CuratorGPT
+            from ..ai.docent_gpt import DocentGPT
             from ..utils.safety_validator import SafetyValidator
             from ..utils.cost_tracker import CostTracker
 
@@ -93,7 +93,7 @@ class ACTTherapySystem:
             self.prompt_engineer = PromptEngineer(
                 self.gpt_service, gpt_prompts_path=gpt_prompts_path
             )
-            self.curator_gpt = CuratorGPT(
+            self.docent_gpt = DocentGPT(
                 self.gpt_service,
                 self.safety_validator,
                 gpt_prompts_path=gpt_prompts_path,
@@ -114,7 +114,7 @@ class ACTTherapySystem:
         try:
             self.prompt_architect.set_prompt_engineer(self.prompt_engineer)
             self.prompt_architect.set_safety_validator(self.safety_validator)
-            self.curator_message_system.set_curator_gpt(self.curator_gpt)
+            self.docent_message_system.set_docent_gpt(self.docent_gpt)
             logger.info("모든 GPT 서비스 주입이 완료되었습니다.")
 
         except Exception as e:
@@ -506,20 +506,20 @@ class ACTTherapySystem:
                 "guided_question": guided_question,
             },
             "personalization_updates": personalization_updates,
-            "next_step": "curator_message",
+            "next_step": "docent_message",
             "guided_question": guided_question,
-            "gpt_curator_ready": True,
+            "gpt_docent_ready": True,
         }
 
         logger.info(f"방명록 작성 완료: {guestbook_title}")
         return guestbook_result
 
-    def create_curator_message(
+    def create_docent_message(
         self, user_id: str, gallery_item_id: str
     ) -> Dict[str, Any]:
-        """ACT 4단계: Closure (큐레이터 메시지 생성)"""
+        """ACT 4단계: Closure (도슨트 메시지 생성)"""
 
-        logger.info(f"사용자 {user_id} 큐레이터 메시지 생성: 아이템 {gallery_item_id}")
+        logger.info(f"사용자 {user_id} 도슨트 메시지 생성: 아이템 {gallery_item_id}")
 
         try:
             gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
@@ -528,23 +528,23 @@ class ACTTherapySystem:
 
             user = self.user_manager.get_user(user_id)
 
-            curator_message = self.curator_message_system.create_personalized_message(
+            docent_message = self.docent_message_system.create_personalized_message(
                 user=user,
                 gallery_item=gallery_item,
             )
 
-            success = self.gallery_manager.add_curator_message(
-                gallery_item_id, curator_message
+            success = self.gallery_manager.add_docent_message(
+                gallery_item_id, docent_message
             )
 
             if not success:
-                raise RuntimeError("큐레이터 메시지 저장에 실패했습니다.")
+                raise RuntimeError("도슨트 메시지 저장에 실패했습니다.")
 
-            curator_result = {
+            docent_result = {
                 "user_id": user_id,
                 "gallery_item_id": gallery_item_id,
                 "step": "closure_complete",
-                "curator_message": curator_message,
+                "docent_message": docent_message,
                 "journey_complete": True,
                 "completion_message": "감정의 여정이 완성되었습니다.",
                 "next_recommendations": [
@@ -554,18 +554,18 @@ class ACTTherapySystem:
                 ],
                 "gpt_metadata": {
                     "generation_method": "gpt",
-                    "personalization_level": curator_message.get("metadata", {}).get(
+                    "personalization_level": docent_message.get("metadata", {}).get(
                         "personalization_level", 0
                     ),
                     "safety_validated": True,
                 },
             }
 
-            logger.info(f"큐레이터 메시지 생성 완료: 아이템 {gallery_item_id}")
-            return curator_result
+            logger.info(f"도슨트 메시지 생성 완료: 아이템 {gallery_item_id}")
+            return docent_result
 
         except Exception as e:
-            logger.error(f"큐레이터 메시지 생성 실패: {e}")
+            logger.error(f"도슨트 메시지 생성 실패: {e}")
             raise
 
     def record_message_reaction(
@@ -575,7 +575,7 @@ class ACTTherapySystem:
         reaction_type: str,
         reaction_data: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        """큐레이터 메시지에 대한 사용자 반응 기록"""
+        """도슨트 메시지에 대한 사용자 반응 기록"""
 
         logger.info(f"사용자 {user_id} 메시지 반응 기록: {reaction_type}")
 
@@ -596,7 +596,7 @@ class ACTTherapySystem:
                 self.personalization_manager.update_preferences_from_message_reaction(
                     user_id=user_id,
                     reaction_type=reaction_type,
-                    curator_message=gallery_item.curator_message,
+                    docent_message=gallery_item.docent_message,
                     guestbook_data={
                         "title": gallery_item.guestbook_title,
                         "tags": gallery_item.guestbook_tags,
@@ -643,7 +643,7 @@ class ACTTherapySystem:
                 "total_tokens": cost_stats.get("total_tokens", 0),
                 "total_cost": cost_stats.get("total_cost", 0.0),
                 "prompt_generations": cost_stats.get("prompt_calls", 0),
-                "curator_generations": cost_stats.get("curator_calls", 0),
+                "docent_generations": cost_stats.get("docent_calls", 0),
                 "avg_generation_time": cost_stats.get("avg_generation_time", 0.0),
             }
         except Exception as e:
@@ -690,20 +690,20 @@ class ACTTherapySystem:
     def _analyze_gpt_performance(self, user_id: str) -> Dict[str, Any]:
         """GPT 성능 분석"""
         try:
-            curator_performance = (
-                self.curator_message_system.get_gpt_performance_metrics(user_id)
+            docent_performance = (
+                self.docent_message_system.get_gpt_performance_metrics(user_id)
             )
             cost_data = self.cost_tracker.get_user_usage_summary(user_id)
 
             return {
-                "curator_effectiveness": curator_performance.get("quality_score", 0),
-                "personalization_level": curator_performance.get(
+                "docent_effectiveness": docent_performance.get("quality_score", 0),
+                "personalization_level": docent_performance.get(
                     "personalization_score", 0
                 ),
                 "cost_efficiency": cost_data.get("cost_per_generation", 0),
-                "generation_success_rate": curator_performance.get("success_rate", 1.0),
+                "generation_success_rate": docent_performance.get("success_rate", 1.0),
                 "optimization_suggestions": self._generate_gpt_optimization_suggestions(
-                    curator_performance
+                    docent_performance
                 ),
             }
         except Exception as e:
@@ -719,7 +719,7 @@ class ACTTherapySystem:
         quality_score = performance.get("quality_score", 0)
         if quality_score < 0.7:
             suggestions.append(
-                "큐레이터 메시지 품질을 위한 프롬프트 엔지니어링 필요"
+                "도슨트 메시지 품질을 위한 프롬프트 엔지니어링 필요"
             )
 
         personalization_score = performance.get("personalization_score", 0)
@@ -745,7 +745,7 @@ class ACTTherapySystem:
             complete_journeys = [
                 item.to_dict()
                 for item in gallery_items
-                if item.guestbook_title and item.curator_message
+                if item.guestbook_title and item.docent_message
             ]
 
             results = {}
@@ -798,7 +798,7 @@ class ACTTherapySystem:
         complete_journeys = [
             item
             for item in gallery_items
-            if item.guestbook_title and item.curator_message
+            if item.guestbook_title and item.docent_message
         ]
 
         from ..training.lora_trainer import PersonalizedLoRATrainer
@@ -998,10 +998,10 @@ class ACTTherapySystem:
                 "gallery_manager": self.gallery_manager is not None,
                 "cost_tracker": hasattr(self, "cost_tracker") and self.cost_tracker is not None,
                 "prompt_architect": self.prompt_architect.get_system_status(),
-                "curator_message": self.curator_message_system.get_system_status(),
+                "docent_message": self.docent_message_system.get_system_status(),
                 "gpt_service": hasattr(self, "gpt_service") and self.gpt_service is not None,
                 "prompt_engineer": hasattr(self, "prompt_engineer") and self.prompt_engineer is not None,
-                "curator_gpt": hasattr(self, "curator_gpt") and self.curator_gpt is not None,
+                "docent_gpt": hasattr(self, "docent_gpt") and self.docent_gpt is not None,
                 "safety_validator": hasattr(self, "safety_validator") and self.safety_validator is not None,
             },
             "sqlite_files": 0,

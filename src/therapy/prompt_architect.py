@@ -74,9 +74,7 @@ class PromptArchitect:
             raise RuntimeError(f"GPT 프롬프트 생성 실패: {result['error']}")
 
         generated_prompt = result["prompt"]
-        logger.info(
-            f"Reflection 프롬프트 생성 완료: {len(generated_prompt)} 문자"
-        )
+        logger.info(f"Reflection 프롬프트 생성 완료: {len(generated_prompt)} 문자")
 
         ##
         with open("./prompt_test/generated_prompt.txt", "w", encoding="utf-8") as f:
@@ -91,12 +89,12 @@ class PromptArchitect:
         emotion_keywords: List[str],
         user_id: str = "anonymous",
     ) -> str:
-        """큐레이터 전환 안내 질문 생성"""
+        """도슨트 전환 안내 질문 생성"""
 
         if not self.prompt_engineer:
             raise RuntimeError("PromptEngineer가 주입되지 않았습니다.")
 
-        logger.info(f"큐레이터 전환 안내 질문 생성 시작: {guestbook_title}")
+        logger.info(f"도슨트 전환 안내 질문 생성 시작: {guestbook_title}")
 
         # GPT에 전환 질문 생성 요청
         result = self.prompt_engineer.generate_transition_guidance(
@@ -109,7 +107,7 @@ class PromptArchitect:
             logger.error(f"전환 안내 생성 실패: {result.get('error')}")
             raise RuntimeError(f"전환 안내 생성 실패: {result.get('error')}")
 
-        logger.info(f"큐레이터 전환 안내 질문 생성 완료: {guestbook_title}")
+        logger.info(f"도슨트 전환 안내 질문 생성 완료: {guestbook_title}")
         return result["content"]
 
     def get_prompt_analysis(self, prompt: str) -> Dict[str, Any]:

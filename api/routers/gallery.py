@@ -33,7 +33,7 @@ from ..models.gallery import (
     EmotionAnalysis,
     GeneratedImage,
     GuestbookEntry,
-    CuratorMessage
+    DocentMessage
 )
 from ..models.therapy import JourneyStage
 
@@ -70,7 +70,7 @@ async def get_gallery_items(
             query["emotion_analysis.primary_emotion"] = {"$in": emotions}
         
         if completed_only:
-            query["curator_message"] = {"$exists": True, "$ne": {}}
+            query["docent_message"] = {"$exists": True, "$ne": {}}
         
         # 전체 개수 조회
         total_count = await db[Collections.GALLERY_ITEMS].count_documents(query)
@@ -92,7 +92,7 @@ async def get_gallery_items(
                 created_date=item["created_date"],
                 thumbnail_url=thumbnail_url,
                 primary_emotion=item.get("emotion_analysis", {}).get("primary_emotion", "neutral"),
-                is_completed=bool(item.get("curator_message"))
+                is_completed=bool(item.get("docent_message"))
             )
             items.append(summary)
         
@@ -151,7 +151,7 @@ async def get_gallery_item(
             emotion_analysis=EmotionAnalysis(**item["emotion_analysis"]) if item.get("emotion_analysis") else None,
             generated_image=GeneratedImage(**item["generated_image"]) if item.get("generated_image") else None,
             guestbook_entry=GuestbookEntry(**item["guestbook_entry"]) if item.get("guestbook_entry") else None,
-            curator_message=CuratorMessage(**item["curator_message"]) if item.get("curator_message") else None,
+            docent_message=DocentMessage(**item["docent_message"]) if item.get("docent_message") else None,
             journey_stage=item["journey_stage"],
             is_completed=item["is_completed"]
         )

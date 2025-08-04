@@ -65,7 +65,7 @@ class EmoseumCLI:
         print("\n" + "=" * 60)
         print("Emoseum - ACT 기반 디지털 치료 시스템".center(60))
         print("=" * 60)
-        print("감정을 시각화하고 큐레이터와 함께하는 치유의 여정".center(60))
+        print("감정을 시각화하고 도슨트와 함께하는 치유의 여정".center(60))
         print("=" * 60 + "\n")
 
     def _handle_user_selection(self):
@@ -348,48 +348,48 @@ class EmoseumCLI:
             print(f"태그: {', '.join(result['guestbook']['tags'])}")
             print(f"\n{result['guided_question']}")
 
-            # Step 4: Closure (큐레이터 메시지)
-            if input("\n큐레이터 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
-                self._create_curator_message()
+            # Step 4: Closure (도슨트 메시지)
+            if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
+                self._create_docent_message()
 
         except Exception as e:
             logger.error(f"방명록 작성 실패: {e}")
             print(f"처리 중 오류가 발생했습니다: {e}")
 
-    def _create_curator_message(self):
-        """큐레이터 메시지 생성"""
+    def _create_docent_message(self):
+        """도슨트 메시지 생성"""
         if not self.current_journey:
             print("진행 중인 여정이 없습니다.")
             return
 
-        print("\n큐레이터가 당신만을 위한 메시지를 준비하고 있습니다...")
+        print("\n도슨트가 당신만을 위한 메시지를 준비하고 있습니다...")
 
         try:
-            result = self.therapy_system.create_curator_message(
+            result = self.therapy_system.create_docent_message(
                 self.current_user, self.current_journey
             )
 
             print("\n" + "=" * 60)
-            print("큐레이터 메시지".center(60))
+            print("도슨트 메시지".center(60))
             print("=" * 60)
 
-            # 큐레이터 메시지 내용 출력
-            curator_content = result["curator_message"]["content"]
+            # 도슨트 메시지 내용 출력
+            docent_content = result["docent_message"]["content"]
 
-            if curator_content.get("opening"):
-                print(f"\n{curator_content['opening']}")
+            if docent_content.get("opening"):
+                print(f"\n{docent_content['opening']}")
 
-            if curator_content.get("recognition"):
-                print(f"\n{curator_content['recognition']}")
+            if docent_content.get("recognition"):
+                print(f"\n{docent_content['recognition']}")
 
-            if curator_content.get("personal_note"):
-                print(f"\n{curator_content['personal_note']}")
+            if docent_content.get("personal_note"):
+                print(f"\n{docent_content['personal_note']}")
 
-            if curator_content.get("guidance"):
-                print(f"\n{curator_content['guidance']}")
+            if docent_content.get("guidance"):
+                print(f"\n{docent_content['guidance']}")
 
-            if curator_content.get("closing"):
-                print(f"\n{curator_content['closing']}")
+            if docent_content.get("closing"):
+                print(f"\n{docent_content['closing']}")
 
             print("\n" + "=" * 60)
             print(result["completion_message"])
@@ -403,7 +403,7 @@ class EmoseumCLI:
             self.current_journey = None
 
         except Exception as e:
-            logger.error(f"큐레이터 메시지 생성 실패: {e}")
+            logger.error(f"도슨트 메시지 생성 실패: {e}")
             print(f"처리 중 오류가 발생했습니다: {e}")
 
     def _continue_incomplete_journey(self):
@@ -439,7 +439,7 @@ class EmoseumCLI:
                 # 다음 단계 한글 변환
                 step_names = {
                     "guestbook": "방명록 작성",
-                    "curator_message": "큐레이터 메시지",
+                    "docent_message": "도슨트 메시지",
                     "completed": "완료",
                 }
                 next_step_text = step_names.get(next_step, next_step)
@@ -454,8 +454,8 @@ class EmoseumCLI:
                     progress.append("✓ 이미지 생성")
                 if status["guestbook"]:
                     progress.append("✓ 방명록")
-                if status["curator_message"]:
-                    progress.append("✓ 큐레이터 메시지")
+                if status["docent_message"]:
+                    progress.append("✓ 도슨트 메시지")
 
                 if progress:
                     print(f"    완료: {' | '.join(progress)}")
@@ -507,18 +507,18 @@ class EmoseumCLI:
             )
             if input("\n방명록을 작성하시겠습니까? (y/n): ").lower() == "y":
                 self._write_guestbook()
-        elif next_step == "curator_message":
+        elif next_step == "docent_message":
             print(f"\n✅ 방명록이 이미 작성되어 있습니다:")
             print(f"   제목: {journey_item.guestbook_title}")
             print(f"   태그: {', '.join(journey_item.guestbook_tags)}")
-            if input("\n큐레이터 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
-                self._create_curator_message()
+            if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
+                self._create_docent_message()
         else:
             print("이 여정은 이미 완료되었습니다.")
             self.current_journey = None
 
     def _collect_message_reaction(self):
-        """큐레이터 메시지에 대한 사용자 반응 수집"""
+        """도슨트 메시지에 대한 사용자 반응 수집"""
         print("\n=== 메시지 반응 ===")
         print("이 메시지는 어떠셨나요?")
         print("1. 좋아요")
@@ -589,13 +589,13 @@ class EmoseumCLI:
                     print(f"    제목: {item['guestbook_title']}")
                     print(f"    태그: {', '.join(item['guestbook_tags'])}")
 
-                # 완성도 체크 변경: curator_message 기준
-                has_curator_message = (
-                    item.get("curator_message")
-                    and isinstance(item["curator_message"], dict)
-                    and item["curator_message"]
+                # 완성도 체크 변경: docent_message 기준
+                has_docent_message = (
+                    item.get("docent_message")
+                    and isinstance(item["docent_message"], dict)
+                    and item["docent_message"]
                 )
-                completion_status = "완료" if has_curator_message else "진행중"
+                completion_status = "완료" if has_docent_message else "진행중"
                 print(f"    완성도: {completion_status}")
 
                 # 메시지 반응 표시
@@ -642,7 +642,7 @@ class EmoseumCLI:
             # 메시지 참여도 (새로 추가됨)
             if "message_engagement" in insights:
                 engagement = insights["message_engagement"]
-                print(f"\n=== 큐레이터 메시지 참여도 ===")
+                print(f"\n=== 도슨트 메시지 참여도 ===")
                 print(f"총 반응 수: {engagement.get('total_reactions', 0)}회")
                 print(f"참여 수준: {engagement.get('engagement_level', 'N/A')}")
                 if engagement.get("positive_reaction_rate") is not None:

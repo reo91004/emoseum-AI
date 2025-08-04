@@ -3,7 +3,7 @@
 # ==============================================================================
 # 이 파일은 시스템의 치료적 안전성을 보장하기 위한 핵심 검증 도구이다.
 # `config/safety_rules.yaml`에 정의된 규칙(유해 키워드, 부적절한 응답 패턴 등)을 기반으로
-# 사용자의 입력과 GPT가 생성한 모든 콘텐츠(프롬프트, 큐레이터 메시지)를 검증한다.
+# 사용자의 입력과 GPT가 생성한 모든 콘텐츠(프롬프트, 도슨트 메시지)를 검증한다.
 # 검증 결과에 따라 콘텐츠를 그대로 사용하거나, 수정하거나, 또는 비상 대응 절차를 실행한다.
 # ==============================================================================
 
@@ -85,18 +85,27 @@ class SafetyValidator:
                 if "positive_indicators" in therapeutic:
                     self.therapeutic_quality_indicators["positive"] = []
                     for subcategory in therapeutic["positive_indicators"].values():
-                        self.therapeutic_quality_indicators["positive"].extend(subcategory)
-                
+                        self.therapeutic_quality_indicators["positive"].extend(
+                            subcategory
+                        )
+
                 # empathetic_indicators 처리
                 if "empathetic_indicators" in therapeutic:
                     self.therapeutic_quality_indicators["empathetic"] = []
                     for subcategory in therapeutic["empathetic_indicators"].values():
-                        self.therapeutic_quality_indicators["empathetic"].extend(subcategory)
-                
+                        self.therapeutic_quality_indicators["empathetic"].extend(
+                            subcategory
+                        )
+
                 # empowerment는 positive_indicators 안의 하위 카테고리로 별도 처리
-                if "positive_indicators" in therapeutic and "empowerment" in therapeutic["positive_indicators"]:
-                    self.therapeutic_quality_indicators["empowering"] = therapeutic["positive_indicators"]["empowerment"]
-                
+                if (
+                    "positive_indicators" in therapeutic
+                    and "empowerment" in therapeutic["positive_indicators"]
+                ):
+                    self.therapeutic_quality_indicators["empowering"] = therapeutic[
+                        "positive_indicators"
+                    ]["empowerment"]
+
                 # 기본값 설정 (키가 없을 경우)
                 for key in ["positive", "empathetic", "empowering"]:
                     if key not in self.therapeutic_quality_indicators:
@@ -112,7 +121,7 @@ class SafetyValidator:
                         self.professional_referral_triggers[level] = referral_data[
                             level
                         ]["keywords"]
-                
+
                 # 기본값 설정 (키가 없을 경우)
                 for level in ["immediate", "urgent", "recommended"]:
                     if level not in self.professional_referral_triggers:
@@ -554,7 +563,6 @@ class SafetyValidator:
             validation_result["is_safe"]
             and validation_result["safety_level"] != "critical"
         )
-
 
     def analyze_safety_trends(
         self, validation_history: List[Dict[str, Any]]

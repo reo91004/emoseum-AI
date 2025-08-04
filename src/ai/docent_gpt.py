@@ -1,10 +1,10 @@
-# src/ai/curator_gpt.py
+# src/ai/docent_gpt.py
 
 # ==============================================================================
-# 이 파일은 AI 큐레이터 'Luna'의 메시지를 생성하는 역할을 전담한다.
+# 이 파일은 AI 도슨트 'Luna'의 메시지를 생성하는 역할을 전담한다.
 # `src.services.gpt_service.GPTService`를 사용하여 OpenAI API를 호출하고,
-# `config/gpt_prompts.yaml`의 'curator_messages' 섹션에 정의된 프롬프트 템플릿을 활용하여
-# 사용자의 대처 스타일과 감정 여정 데이터에 기반한 개인화된 큐레이터 메시지를 생성한다.
+# `config/gpt_prompts.yaml`의 'docent_messages' 섹션에 정의된 프롬프트 템플릿을 활용하여
+# 사용자의 대처 스타일과 감정 여정 데이터에 기반한 개인화된 도슨트 메시지를 생성한다.
 # 생성된 메시지는 `src.utils.safety_validator.SafetyValidator`에 의해 안전성 검증을 거친다.
 # ==============================================================================
 
@@ -17,8 +17,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-class CuratorGPT:
-    """큐레이터 메시지 생성"""
+class DocentGPT:
+    """도슨트 메시지 생성"""
 
     def __init__(
         self, gpt_service, safety_validator, gpt_prompts_path: Optional[str] = None
@@ -27,11 +27,11 @@ class CuratorGPT:
         self.safety_validator = safety_validator
         self.gpt_prompts_path = Path(gpt_prompts_path) if gpt_prompts_path else None
 
-        # YAML 파일에서 큐레이터 가이드라인 로드
+        # YAML 파일에서 도슨트 가이드라인 로드
         if self.gpt_prompts_path and self.gpt_prompts_path.exists():
-            self.curator_guidelines = self._load_curator_guidelines_from_yaml()
+            self.docent_guidelines = self._load_docent_guidelines_from_yaml()
             logger.info(
-                f"큐레이터 가이드라인을 YAML 파일에서 로드했습니다: {self.gpt_prompts_path}"
+                f"도슨트 가이드라인을 YAML 파일에서 로드했습니다: {self.gpt_prompts_path}"
             )
         else:
             # YAML 파일 로드 실패 시 에러 발생
@@ -46,18 +46,18 @@ class CuratorGPT:
                 logger.error("GPT 프롬프트 파일 경로가 제공되지 않았습니다")
                 raise ValueError("GPT prompts file path is required")
 
-        logger.info("CuratorGPT 초기화 완료")
+        logger.info("DocentGPT 초기화 완료")
 
-    def _load_curator_guidelines_from_yaml(self) -> Dict[str, Any]:
-        """YAML 파일에서 큐레이터 가이드라인 로드"""
+    def _load_docent_guidelines_from_yaml(self) -> Dict[str, Any]:
+        """YAML 파일에서 도슨트 가이드라인 로드"""
         try:
             with open(self.gpt_prompts_path, "r", encoding="utf-8") as f:
                 yaml_data = yaml.safe_load(f)
 
-            return yaml_data.get("curator_messages", {})
+            return yaml_data.get("docent_messages", {})
 
         except Exception as e:
-            logger.error(f"YAML 큐레이터 가이드라인 로드 실패: {e}")
+            logger.error(f"YAML 도슨트 가이드라인 로드 실패: {e}")
             raise
 
     def _get_emergency_message(self, message_type: str = "safety_fallback") -> Dict[str, str]:
@@ -72,7 +72,7 @@ class CuratorGPT:
                 "recognition": "Your journey is valued.",
                 "personal_note": "This moment matters.",
                 "guidance": "Continue with care.",
-                "closing": "With support,\nLuna\nArt Curator"
+                "closing": "With support,\nLuna\nArt Docent"
             }))
         except Exception as e:
             logger.error(f"비상용 메시지 로드 실패: {e}")
@@ -82,7 +82,7 @@ class CuratorGPT:
                 "recognition": "Your journey is valued.",
                 "personal_note": "This moment matters.",
                 "guidance": "Continue with care.",
-                "closing": "With support,\nLuna\nArt Curator"
+                "closing": "With support,\nLuna\nArt Docent"
             }
 
 
@@ -92,7 +92,7 @@ class CuratorGPT:
         gallery_item: Any,
         personalization_context: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """큐레이터 메시지 생성"""
+        """도슨트 메시지 생성"""
 
         try:
             # 1. 개인화 컨텍스트 구성
@@ -101,7 +101,7 @@ class CuratorGPT:
             )
 
             # 2. GPT API 호출
-            gpt_response = self.gpt_service.generate_curator_message(
+            gpt_response = self.gpt_service.generate_docent_message(
                 user_profile=context,
                 gallery_item=context,
                 personalization_context=context,
@@ -112,11 +112,11 @@ class CuratorGPT:
 
             if not gpt_response.get("success", False):
                 logger.error(
-                    f"GPT 큐레이터 메시지 생성 실패: {gpt_response.get('error', 'Unknown error')}"
+                    f"GPT 도슨트 메시지 생성 실패: {gpt_response.get('error', 'Unknown error')}"
                 )
                 return {
                     "success": False,
-                    "error": f"GPT curator message generation failed: {gpt_response.get('error')}",
+                    "error": f"GPT docent message generation failed: {gpt_response.get('error')}",
                     "retry_recommended": True,
                     "requires_manual_intervention": True,
                 }
@@ -132,7 +132,7 @@ class CuratorGPT:
 
             if not safety_check.get("is_safe", False):
                 logger.warning(
-                    f"생성된 큐레이터 메시지가 안전하지 않음: {safety_check.get('issues', [])}"
+                    f"생성된 도슨트 메시지가 안전하지 않음: {safety_check.get('issues', [])}"
                 )
                 # 안전성 실패 시에는 YAML에서 비상용 메시지 템플릿 사용
                 emergency_content = self._get_emergency_message("safety_fallback")
@@ -162,10 +162,10 @@ class CuratorGPT:
 
             # 5. 최종 메시지 구성
             final_message = {
-                "message_id": f"curator_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                "message_id": f"docent_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 "user_id": user_profile.user_id,
                 "gallery_item_id": gallery_item.item_id,
-                "message_type": "curator_closure",
+                "message_type": "docent_closure",
                 "content": structured_message,
                 "personalization_data": {
                     "coping_style": context["coping_style"],
@@ -187,7 +187,7 @@ class CuratorGPT:
             }
 
             logger.info(
-                f"큐레이터 메시지 생성 완료: 사용자={user_profile.user_id}, "
+                f"도슨트 메시지 생성 완료: 사용자={user_profile.user_id}, "
                 f"스타일={context['coping_style']}, 토큰="
                 f"{gpt_response.get('token_usage', {}).get('total_tokens', 0)}"
             )
@@ -195,10 +195,10 @@ class CuratorGPT:
             return final_message
 
         except Exception as e:
-            logger.error(f"큐레이터 메시지 생성 중 오류 발생: {e}")
+            logger.error(f"도슨트 메시지 생성 중 오류 발생: {e}")
             return {
                 "success": False,
-                "error": f"Curator message generation error: {str(e)}",
+                "error": f"Docent message generation error: {str(e)}",
                 "retry_recommended": True,
             }
 

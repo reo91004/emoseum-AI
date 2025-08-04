@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from .therapy import EmotionAnalysis, GeneratedImage, GuestbookEntry, CuratorMessage, JourneyStage
+from .therapy import EmotionAnalysis, GeneratedImage, GuestbookEntry, DocentMessage, JourneyStage
 
 
 class GalleryItemSummary(BaseModel):
@@ -24,7 +24,7 @@ class GalleryItemDetail(BaseModel):
     emotion_analysis: EmotionAnalysis
     generated_image: GeneratedImage
     guestbook_entry: Optional[GuestbookEntry] = None
-    curator_message: Optional[CuratorMessage] = None
+    docent_message: Optional[DocentMessage] = None
     journey_stage: JourneyStage
     is_completed: bool
 

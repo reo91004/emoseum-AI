@@ -1,9 +1,9 @@
-# src/therapy/curator_message.py
+# src/therapy/docent_message.py
 
 # ==============================================================================
-# 이 파일은 ACT(수용전념치료) 이론의 'Closure' 단계를 담당하며, 큐레이터 메시지 생성을 총괄한다.
-# `act_therapy_system`으로부터 요청을 받아, 주입된 `curator_gpt` 모듈을 사용하여
-# 사용자 프로필과 갤러리 아이템에 기반한 개인화된 큐레이터 메시지를 생성하도록 지시한다.
+# 이 파일은 ACT(수용전념치료) 이론의 'Closure' 단계를 담당하며, 도슨트 메시지 생성을 총괄한다.
+# `act_therapy_system`으로부터 요청을 받아, 주입된 `docent_gpt` 모듈을 사용하여
+# 사용자 프로필과 갤러리 아이템에 기반한 개인화된 도슨트 메시지를 생성하도록 지시한다.
 # 생성된 메시지는 다시 `act_therapy_system`으로 반환되어 사용자에게 전달된다.
 # ==============================================================================
 
@@ -14,36 +14,36 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class CuratorMessageSystem:
-    """ACT 기반 큐레이터 메시지 생성 시스템"""
+class DocentMessageSystem:
+    """ACT 기반 도슨트 메시지 생성 시스템"""
 
     def __init__(self, user_manager):
         self.user_manager = user_manager
-        self.curator_gpt = None  # GPT 큐레이터 주입받을 예정
+        self.docent_gpt = None  # GPT 도슨트 주입받을 예정
 
-        logger.info("CuratorMessageSystem 초기화 완료 (GPT)")
+        logger.info("DocentMessageSystem 초기화 완료 (GPT)")
 
-    def set_curator_gpt(self, curator_gpt):
-        """GPT 큐레이터 주입"""
-        self.curator_gpt = curator_gpt
-        logger.info("CuratorGPT가 CuratorMessageSystem에 주입되었습니다.")
+    def set_docent_gpt(self, docent_gpt):
+        """GPT 도슨트 주입"""
+        self.docent_gpt = docent_gpt
+        logger.info("DocentGPT가 DocentMessageSystem에 주입되었습니다.")
 
     def create_personalized_message(
         self, user, gallery_item, message_context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """개인화된 큐레이터 메시지 생성"""
+        """개인화된 도슨트 메시지 생성"""
 
-        if not self.curator_gpt:
+        if not self.docent_gpt:
             raise RuntimeError(
-                "CuratorGPT가 주입되지 않았습니다. set_curator_gpt()를 먼저 호출하세요."
+                "DocentGPT가 주입되지 않았습니다. set_docent_gpt()를 먼저 호출하세요."
             )
 
         logger.info(
-            f"큐레이터 메시지 생성 시작: 사용자 {user.user_id}, 아이템 {gallery_item.item_id}"
+            f"도슨트 메시지 생성 시작: 사용자 {user.user_id}, 아이템 {gallery_item.item_id}"
         )
 
-        # GPT 큐레이터로 개인화된 메시지 생성
-        result = self.curator_gpt.generate_personalized_message(
+        # GPT 도슨트로 개인화된 메시지 생성
+        result = self.docent_gpt.generate_personalized_message(
             user_profile=user,
             gallery_item=gallery_item,
             personalization_context=message_context,
@@ -51,14 +51,14 @@ class CuratorMessageSystem:
 
         # GPT 생성 결과 검증
         if not result or not isinstance(result, dict):
-            logger.error("CuratorGPT에서 유효하지 않은 결과를 반환했습니다.")
-            raise RuntimeError("GPT 큐레이터 메시지 생성에 실패했습니다.")
+            logger.error("DocentGPT에서 유효하지 않은 결과를 반환했습니다.")
+            raise RuntimeError("GPT 도슨트 메시지 생성에 실패했습니다.")
 
         # 풀백 사용 여부 확인 및 경고
         metadata = result.get("metadata", {})
         if metadata.get("fallback_used", False):
             logger.warning(
-                f"큐레이터 메시지에서 풀백 생성이 사용되었습니다: 사용자 {user.user_id}"
+                f"도슨트 메시지에서 풀백 생성이 사용되었습니다: 사용자 {user.user_id}"
             )
             # 풀백 사용시에도 계속 진행 (하지만 로그로 추적)
 
@@ -71,7 +71,7 @@ class CuratorMessageSystem:
             )
 
         # 생성 완료 로깅
-        logger.info(f"큐레이터 메시지 생성 완료: 사용자 {user.user_id}")
+        logger.info(f"도슨트 메시지 생성 완료: 사용자 {user.user_id}")
 
         return result
 
@@ -154,7 +154,7 @@ class CuratorMessageSystem:
     def get_system_status(self) -> Dict[str, Any]:
         """시스템 상태 확인"""
         return {
-            "curator_gpt_injected": self.curator_gpt is not None,
+            "docent_gpt_injected": self.docent_gpt is not None,
             "generation_method": "gpt_only",
             "fallback_available": False,
             "hardcoded_templates": False,

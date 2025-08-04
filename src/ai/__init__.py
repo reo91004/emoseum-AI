@@ -1,6 +1,6 @@
 # src/ai/__init__.py
 
 from .prompt_engineer import PromptEngineer
-from .curator_gpt import CuratorGPT
+from .docent_gpt import DocentGPT
 
-__all__ = ["PromptEngineer", "CuratorGPT"]
+__all__ = ["PromptEngineer", "DocentGPT"]
