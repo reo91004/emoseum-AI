@@ -19,6 +19,7 @@ from ..managers.user_manager import UserManager, PsychometricResult
 from ..therapy.prompt_architect import PromptArchitect
 from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
+from ..services.image_service_wrapper import ColabImageGenerator, ExternalImageGenerator
 from ..managers.gallery_manager import GalleryManager, GalleryItem
 from ..therapy.docent_message import DocentMessageSystem
 
@@ -52,7 +53,10 @@ class ACTTherapySystem:
         # MongoDB 기반 컴포넌트 초기화
         self.user_manager = UserManager(mongodb_client)
         self.personalization_manager = PersonalizationManager(self.user_manager)
-        self.image_generator = ImageGenerator(model_path)
+        
+        # 이미지 생성 서비스 초기화 (환경변수에 따라 선택)
+        self._initialize_image_service(model_path)
+        
         self.gallery_manager = GalleryManager(mongodb_client)
 
         # GPT 서비스들 초기화
@@ -66,6 +70,50 @@ class ACTTherapySystem:
         self._inject_gpt_services()
 
         logger.info("ACT 치료 시스템 초기화 완료")
+
+    def _initialize_image_service(self, model_path: str):
+        """이미지 생성 서비스 초기화 (환경변수에 따라 선택)"""
+        
+        # 환경변수에서 이미지 생성 서비스 타입 확인
+        service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local_gpu")
+        
+        try:
+            if service_type == "colab":
+                # Colab 서비스 사용
+                logger.info("Colab 이미지 생성 서비스를 초기화합니다...")
+                colab_notebook_url = os.getenv("COLAB_NOTEBOOK_URL")
+                if not colab_notebook_url:
+                    logger.warning("COLAB_NOTEBOOK_URL이 설정되지 않았습니다. local_gpu로 대체합니다.")
+                    service_type = "local_gpu"
+                else:
+                    # Colab용 래퍼 클래스 사용
+                    self.image_generator = ColabImageGenerator(colab_notebook_url)
+                    logger.info("Colab 이미지 생성 서비스 초기화 완료")
+                    return
+            
+            elif service_type == "external_gpu":
+                # 외부 GPU 서비스 사용
+                logger.info("외부 GPU 이미지 생성 서비스를 초기화합니다...")
+                external_endpoint = os.getenv("EXTERNAL_GPU_ENDPOINT")
+                if not external_endpoint:
+                    logger.warning("EXTERNAL_GPU_ENDPOINT가 설정되지 않았습니다. local_gpu로 대체합니다.")
+                    service_type = "local_gpu"
+                else:
+                    # 외부 GPU용 래퍼 클래스 사용  
+                    self.image_generator = ExternalImageGenerator(external_endpoint)
+                    logger.info("외부 GPU 이미지 생성 서비스 초기화 완료")
+                    return
+            
+            # local_gpu 또는 기본값
+            if service_type == "local_gpu" or True:  # 기본값으로 처리
+                logger.info("로컬 GPU 이미지 생성 서비스를 초기화합니다...")
+                self.image_generator = ImageGenerator(model_path)
+                logger.info("로컬 GPU 이미지 생성 서비스 초기화 완료")
+                
+        except Exception as e:
+            logger.error(f"이미지 생성 서비스 초기화 실패: {e}")
+            logger.info("기본 로컬 GPU 서비스로 대체합니다...")
+            self.image_generator = ImageGenerator(model_path)
 
     def _initialize_gpt_services(self):
         """GPT 서비스들 초기화"""
@@ -339,53 +387,51 @@ class ACTTherapySystem:
                 visual_preferences=user.visual_preferences.__dict__,
                 user_id=user.user_id,
             )
+
+
+            # 환경변수에 따라 설정된 이미지 생성 서비스 사용
+            service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local_gpu")
             
-            ## 기본 이미지로 설정
-            # print("이미지 생성 생략, fallback 이미지로 대체")
-            # fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
-            # fallback_image = Image.open(fallback_image_path)
-            # image_url = self.upload_image_to_supabase(fallback_image, user.user_id, prefix="generated/")
-
-
-            # Colab을 통한 이미지 생성 시도
-            try:
-                import httpx
-                import base64
-                from io import BytesIO
+            if service_type == "local_gpu":
+                # 로컬 GPU 서비스 (ImageGenerator)
+                generation_result = self.image_generator.generate_image(
+                    prompt=reflection_prompt,
+                    width=512,
+                    height=512,
+                    num_inference_steps=20,
+                    guidance_scale=7.5
+                )
                 
-                colab_url = os.getenv('COLAB_NOTEBOOK_URL')
-                if colab_url:
-                    payload = {"prompt": reflection_prompt}
-                    
-                    with httpx.Client(timeout=120.0) as client:
-                        response = client.post(f"{colab_url}/generate", json=payload)
-                        
-                        if response.status_code == 200:
-                            result = response.json()
-                            if result.get("success"):
-                                # Base64 이미지를 PIL Image로 변환
-                                img_data = base64.b64decode(result["image"])
-                                final_image = Image.open(BytesIO(img_data))
-                                image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
-                                print(f"Colab 이미지 생성 성공")
-                            else:
-                                raise Exception("Colab generation failed")
-                        else:
-                            raise Exception(f"HTTP {response.status_code}")
+                if generation_result.get("success"):
+                    final_image = generation_result["image"]
+                    image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+                    print(f"이미지 생성 성공 (서비스: local_gpu)")
                 else:
-                    raise Exception("COLAB_NOTEBOOK_URL not set")
+                    raise Exception(generation_result.get('error', 'Unknown error'))
                     
-            except Exception as e:
-                print(f"이미지 생성 실패, fallback 이미지로 대체: {e}")
-                fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
-                final_image = Image.open(fallback_image_path)
-                image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+            else:
+                # Colab 또는 External GPU 서비스 (래퍼 클래스)
+                generation_result = self.image_generator.generate_image(
+                    prompt=reflection_prompt,
+                    output_dir="data/gallery_images/reflection",
+                    filename=f"reflection_{user.user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                )
+                
+                if generation_result.get("success"):
+                    # 생성된 이미지를 Supabase에 업로드
+                    image_path = generation_result["image_path"]
+                    with Image.open(image_path) as final_image:
+                        image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+                    
+                    print(f"이미지 생성 성공 (서비스: {generation_result.get('service', service_type)})")
+                else:
+                    raise Exception(generation_result.get('error', 'Unknown error'))
 
             return {
                 "prompt": reflection_prompt,
-                "image": final_image,
+                "image": final_image if 'final_image' in locals() else None,
                 "image_path": image_url,
-                "generation_time": 30.0,
+                "generation_time": generation_result.get("generation_time", 30.0) if 'generation_result' in locals() else 30.0,
                 "prompt_tokens": 0,
                 "safety_validated": True,
             }
@@ -395,71 +441,6 @@ class ACTTherapySystem:
             raise
 
 
-    # def _create_gpt_reflection_image(
-    #     self, user, emotion_analysis: Dict[str, Any], diary_text: str
-    # ) -> Dict[str, Any]:
-    #     """GPT를 통한 Reflection 이미지 생성"""
-
-    #     coping_style = "balanced"
-    #     if user.psychometric_results:
-    #         coping_style = user.psychometric_results[0].coping_style
-
-    #     self.prompt_architect.set_diary_context(diary_text)
-
-    #     try:
-    #         reflection_prompt = self.prompt_architect.create_reflection_prompt(
-    #             emotion_keywords=emotion_analysis["keywords"],
-    #             vad_scores=emotion_analysis["vad_scores"],
-    #             coping_style=coping_style,
-    #             visual_preferences=user.visual_preferences.__dict__,
-    #             user_id=user.user_id,
-    #         )
-
-    #         generation_result = self.image_generator.generate_image(
-    #             prompt=reflection_prompt,
-    #             width=512,
-    #             height=512,
-    #             num_inference_steps=20,
-    #             guidance_scale=7.5,
-    #         )
-
-    #         # if not generation_result["success"]:
-    #         #     raise RuntimeError(f"이미지 생성 실패: {generation_result['error']}")
-
-    #         generation_result["success"] = False
-    #         generation_result["error"] = "이미지 생성 강제 실패 (CPU fallback 모드)"
-
-    #         if generation_result["success"]:
-    #             image = generation_result["image"]
-    #             image_url = self.upload_image_to_supabase(image, user.user_id, prefix="generated/")
-
-    #             return {
-    #                 "prompt": reflection_prompt,
-    #                 "image": image,
-    #                 "image_path": image_url,
-    #                 "generation_time": generation_result["metadata"]["generation_time"],
-    #                 "prompt_tokens": 0,
-    #                 "safety_validated": True,
-    #             }
-
-    #         else:
-    #             print(f"이미지 생성 실패, fallback 이미지로 대체: {generation_result['error']}")
-    #             fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
-    #             fallback_image = Image.open(fallback_image_path)
-    #             image_url = self.upload_image_to_supabase(fallback_image, user.user_id, prefix="generated/")
-
-    #             return {
-    #                 "prompt": reflection_prompt,
-    #                 "image": fallback_image,
-    #                 "image_path": image_url,
-    #                 "generation_time": 0.0,
-    #                 "prompt_tokens": 0,
-    #                 "safety_validated": True,
-    #             }
-
-    #     except Exception as e:
-    #         logger.error(f"이미지 생성 중 예외 발생: {e}")
-    #         raise
 
     def complete_guestbook(
         self,
