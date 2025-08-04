@@ -14,6 +14,8 @@ from dataclasses import dataclass, asdict
 import logging
 from pymongo.database import Database
 from bson import ObjectId
+import requests
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +100,15 @@ class UserManager:
             "user_id": user_id,
             "created_date": now,
             "last_updated": now,
-            "psychometric_results": [],
+            "psychometric_results": {
+                "phq9_score": 0,
+                "cesd_score": 0,
+                "meaq_score": 0,
+                "ciss_score": 0,
+                "coping_style": "balanced",
+                "severity_level": "mild",
+                "assessment_date": now
+            },
             "visual_preferences": asdict(VisualPreferences()),
             "gpt_settings": {
                 "daily_token_limit": 1000,
@@ -128,6 +138,54 @@ class UserManager:
             logger.error(f"사용자 생성 실패: {e}")
             raise
 
+    def _fetch_user_style_from_emoseum(self, user_id: str) -> str:
+        """Emoseum 서버에서 사용자 스타일 가져오기"""
+        try:
+            emoseum_url = os.getenv('EMOSEUM_SERVER_URL', 'http://localhost:3000')
+            response = requests.get(f"{emoseum_url}/auth/user/{user_id}", timeout=5)
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                style_array = user_data.get('style', [])
+                
+                if style_array and len(style_array) > 0:
+                    # 배열의 모든 스타일을 콤마로 결합
+                    art_style = ", ".join(style_array)
+                    logger.info(f"사용자 {user_id} 스타일: {art_style}")
+                    return art_style
+                    
+        except Exception as e:
+            logger.warning(f"Emoseum 서버에서 스타일 가져오기 실패: {e}")
+        
+        # 기본값 반환
+        return "painting"
+    
+    def update_user_art_style(self, user_id: str) -> bool:
+        """사용자 화풍 스타일 업데이트"""
+        try:
+            # Emoseum 서버에서 최신 스타일 가져오기
+            latest_art_style = self._fetch_user_style_from_emoseum(user_id)
+            
+            # MongoDB에서 업데이트
+            result = self.users_collection.update_one(
+                {"user_id": user_id},
+                {
+                    "$set": {
+                        "visual_preferences.art_style": latest_art_style,
+                        "last_updated": datetime.now().isoformat()
+                    }
+                }
+            )
+            
+            if result.modified_count > 0:
+                logger.info(f"사용자 {user_id} 화풍 업데이트: {latest_art_style}")
+                return True
+            
+        except Exception as e:
+            logger.error(f"화풍 업데이트 실패: {e}")
+        
+        return False
+
     def get_user(self, user_id: str) -> Optional[User]:
         """사용자 정보 조회"""
         try:
@@ -138,8 +196,17 @@ class UserManager:
             
             # 심리검사 결과 변환
             psychometric_results = []
-            for result_data in user_doc.get("psychometric_results", []):
-                result = PsychometricResult(**result_data)
+            result_data = user_doc.get("psychometric_results", {})
+            if result_data and isinstance(result_data, dict):
+                result = PsychometricResult(
+                    phq9_score=result_data.get("phq9_score", 0),
+                    cesd_score=result_data.get("cesd_score", 0),
+                    meaq_score=result_data.get("meaq_score", 0),
+                    ciss_score=result_data.get("ciss_score", 0),
+                    coping_style=result_data.get("coping_style", "balanced"),
+                    severity_level=result_data.get("severity_level", "mild"),
+                    test_date=result_data.get("assessment_date", user_doc["created_date"])
+                )
                 psychometric_results.append(result)
             
             # 시각적 선호도 변환
@@ -171,8 +238,11 @@ class UserManager:
     ) -> PsychometricResult:
         """심리검사 실시 및 결과 저장"""
         
-        # 대처 스타일 결정
-        coping_style = self._determine_coping_style(meaq_score, ciss_score)
+        # 대처 스타일 결정 (원본)
+        # coping_style = self._determine_coping_style(meaq_score, ciss_score)
+        
+        # 수정 : PHQ-9, CES-D 점수
+        coping_style = self._determine_coping_style_from_scores(phq9_score, cesd_score)
         
         # 심각도 결정
         severity_level = self._determine_severity_level(phq9_score, cesd_score)
@@ -215,6 +285,15 @@ class UserManager:
         if avoidance_tendency > 0.7:
             return "avoidant"
         elif confrontation_tendency > 0.7:
+            return "confrontational"
+        else:
+            return "balanced"
+        
+    def _determine_coping_style_from_scores(self, phq9_score: int, cesd_score: int) -> str:
+        """PHQ-9, CES-D 점수 이용"""
+        if phq9_score >= 15 or cesd_score >= 20:
+            return "avoidant"
+        elif phq9_score <= 5 and cesd_score <= 10:
             return "confrontational"
         else:
             return "balanced"

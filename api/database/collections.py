@@ -6,6 +6,9 @@ from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
 import logging
 
+## add
+from typing import TypedDict
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,15 +118,21 @@ GALLERY_ITEM_SCHEMA = {
     "is_completed": bool
 }
 
+class Interaction(TypedDict):
+    timestamp: datetime
+    interaction_type: str
+    response_rating: int
+
 PERSONALIZATION_DATA_SCHEMA = {
     "_id": ObjectId,
     "user_id": str,
-    "interaction_history": List[{
-        "timestamp": datetime,
-        "interaction_type": str,
-        "response_rating": int,
-        "engagement_score": float
-    }],
+    "interaction_history": List[Interaction],
+    # "interaction_history": List[{
+    #     "timestamp": datetime,
+    #     "interaction_type": str,
+    #     "response_rating": int,
+    #     "engagement_score": float
+    # }],
     "preference_weights": {
         "visual_elements": Dict[str, float],
         "message_tone": Dict[str, float],
@@ -137,16 +146,26 @@ PERSONALIZATION_DATA_SCHEMA = {
     }
 }
 
+##
+class ApiCall(TypedDict):
+    timestamp: datetime
+    service: str
+    tokens_used: int
+    cost: float
+    request_type: str
+##
+
 COST_TRACKING_SCHEMA = {
     "_id": ObjectId,
     "user_id": str,
-    "api_calls": List[{
-        "timestamp": datetime,
-        "service": str,
-        "tokens_used": int,
-        "cost": float,
-        "request_type": str
-    }],
+    "api_calls": List[ApiCall],
+    # "api_calls": List[{
+    #     "timestamp": datetime,
+    #     "service": str,
+    #     "tokens_used": int,
+    #     "cost": float,
+    #     "request_type": str
+    # }],
     "monthly_usage": {
         "total_tokens": int,
         "total_cost": float,

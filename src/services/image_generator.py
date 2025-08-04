@@ -143,6 +143,8 @@ class ImageGenerator:
 
         try:
             # Stable Diffusion으로 이미지 생성
+            print(">> image generator Start")
+
             image = self._generate_with_sd(
                 prompt,
                 negative_prompt,
@@ -201,19 +203,34 @@ class ImageGenerator:
     ) -> Image.Image:
         """Stable Diffusion으로 이미지 생성"""
 
-        with torch.autocast(self.device.type if self.device.type != "mps" else "cpu"):
-            result = self.pipeline(
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                width=width,
-                height=height,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=guidance_scale,
-                generator=generator,
-                output_type="pil",
-            )
+        try:
+            with torch.autocast(self.device.type if self.device.type != "mps" else "cpu"):
+                result = self.pipeline(
+                    prompt=prompt,
+                    negative_prompt=negative_prompt,
+                    width=width,
+                    height=height,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=guidance_scale,
+                    generator=generator,
+                    output_type="pil",
+                )
 
-        return result.images[0]
+            return result.images[0]
+
+        except Exception as e:
+            logger.warning(f"Image generation failed, returning fallback image instead : {e}")
+
+            # 로컬 기본 이미지 경로 (예: 'assets/default_image.png')
+            fallback_path = "https://fbffiyvnxkshgxepiimj.supabase.co/storage/v1/object/public/emoseum-images/generated/diary_123_f247fc22da244978b71c995a7ff61250.png"
+            try:
+                fallback_image = Image.open(fallback_path).convert("RGB")
+                return fallback_image
+            except Exception as fallback_error:
+                logger.error(f"Failed to load fallback image : {fallback_error}")
+                raise RuntimeError("Image generation failed and fallback image could not be loaded.")
+
+        #return result.images[0]
 
     def batch_generate(self, prompts: list, **kwargs) -> list:
         """배치 이미지 생성"""

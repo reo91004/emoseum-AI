@@ -46,11 +46,12 @@ class CuratorMessage(BaseModel):
 
 # Request models
 class StartSessionRequest(BaseModel):
-    user_id: str
+    pass
 
 
 class DiaryEntryRequest(BaseModel):
     diary_text: str = Field(..., min_length=10, max_length=1000)
+    diary_id: str = Field(..., description="중앙 서버의 일기 ID")
 
 
 class GuestbookRequest(BaseModel):

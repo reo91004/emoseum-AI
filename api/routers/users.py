@@ -103,9 +103,9 @@ async def conduct_assessment(
         result = act_system.conduct_psychometric_assessment(
             user_id=current_user["user_id"],
             phq9_score=assessment.phq9_score,
-            cesd_score=assessment.cesd_score,
-            meaq_score=assessment.meaq_score,
-            ciss_score=assessment.ciss_score
+            cesd_score=assessment.cesd_score
+            #meaq_score=assessment.meaq_score,
+            #ciss_score=assessment.ciss_score
         )
         
         if not result:

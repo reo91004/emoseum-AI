@@ -13,6 +13,12 @@ class EmoSeumAPITester:
         self.token = None
         self.user_id = None
         self.session_id = None
+
+        print("\n[INIT] EmoSeumAPITester 초기화됨")
+        print(f"[INIT] base_url: {self.base_url}")
+        print(f"[INIT] token: {self.token}")
+        print(f"[INIT] user_id: {self.user_id}")
+        print(f"[INIT] session_id: {self.session_id}")
     
     def print_response(self, name: str, response: requests.Response):
         """응답을 보기 좋게 출력"""

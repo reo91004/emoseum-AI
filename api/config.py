@@ -30,9 +30,9 @@ class Settings(BaseSettings):
         env="CORS_ORIGINS"
     )
     
-    # Database
+    # Database - emoseum-server와 동일한 MongoDB 사용
     mongodb_url: str = Field(default="mongodb://localhost:27017", env="MONGODB_URL")
-    mongodb_database: str = Field(default="emoseum", env="MONGODB_DATABASE")
+    mongodb_database: str = Field(default="emoseum_main", env="MONGODB_DATABASE")
     
     # Image Generation
     image_generation_service: str = Field(default="local_gpu", env="IMAGE_GENERATION_SERVICE")

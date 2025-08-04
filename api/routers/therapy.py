@@ -18,6 +18,7 @@ import os
 from ..database.connection import get_database
 from ..database.collections import Collections
 from ..dependencies import get_current_user, get_act_therapy_system, RateLimiter
+from ..services.emoseum_client import emoseum_client
 from ..models.therapy import (
     StartSessionRequest,
     SessionResponse,
@@ -51,15 +52,11 @@ async def start_therapy_session(
     act_system = Depends(get_act_therapy_system)
 ):
     """새로운 치료 세션 시작"""
+    logger.info(f"Starting therapy session for user: {current_user['user_id']}")
     try:
-        # ACT 시스템을 통해 미완료 세션 확인
-        incomplete_journeys = act_system.gallery_manager.get_incomplete_journeys(current_user["user_id"])
-        
-        if incomplete_journeys:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Please complete your current session before starting a new one. Session ID: {incomplete_journeys[0].item_id}"
-            )
+        # 미완료 세션 체크 비활성화 (테스트용)
+        # incomplete_journeys = act_system.gallery_manager.get_incomplete_journeys(current_user["user_id"])
+        logger.info("Skipping incomplete journey check for testing")
         
         # 새 세션 ID 생성
         session_id = str(uuid.uuid4())
@@ -106,6 +103,37 @@ async def submit_diary_entry(
         
         # 이후 API 호출을 위한 gallery_item_id 저장
         gallery_item_id = result["gallery_item_id"]
+        
+        # DB에 journey_stage와 is_completed 업데이트
+        try:
+            db = await get_database()
+            await db["gallery_items"].update_one(
+                {"item_id": gallery_item_id},
+                {"$set": {
+                    "journey_stage": "defusion",
+                    "is_completed": False
+                }}
+            )
+            logger.info(f"Updated journey stage for {gallery_item_id}")
+        except Exception as e:
+            logger.error(f"Failed to update journey stage: {e}")
+        
+        # Emoseum 서버로 결과 전송
+        try:
+            # gallery_item에서 reflection_prompt 가져오기
+            gallery_item = act_system.gallery_manager.get_gallery_item(gallery_item_id)
+            reflection_prompt = gallery_item.reflection_prompt if gallery_item else ""
+            
+            logger.info(f"Reflection prompt from gallery_item: '{reflection_prompt}'")
+            
+            await emoseum_client.update_diary_from_ai(
+                diary_id=diary.diary_id,
+                keywords=result["emotion_analysis"]["keywords"],
+                image_path=result.get("reflection_image", {}).get("image_path", ""),
+                reflection_prompt=reflection_prompt
+            )
+        except Exception as e:
+            logger.warning(f"Failed to sync with central server: {e}")
         
         return DiaryAnalysisResponse(
             session_id=gallery_item_id,  # API 호환성을 위해 gallery_item_id를 session_id로 사용
@@ -306,6 +334,9 @@ async def get_session_details(
         
         # 여정 단계 및 완료 상태 결정
         completion_status = gallery_item.get_completion_status()
+        logger.info(f"Completion status for {session_id}: {completion_status}")
+        logger.info(f"Gallery item data: reflection_path={gallery_item.reflection_image_path}, guestbook_title={gallery_item.guestbook_title}, curator_message={gallery_item.curator_message}")
+        
         if completion_status["curator_message"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = True
@@ -318,6 +349,8 @@ async def get_session_details(
         else:
             journey_stage = JourneyStage.THE_MOMENT
             is_completed = False
+            
+        logger.info(f"Final stage: {journey_stage}, completed: {is_completed}")
         
         # 응답 구성
         response = TherapySessionDetailResponse(

@@ -163,14 +163,50 @@ class ColabService(ImageGenerationService):
     async def generate_image(self, prompt: str, **kwargs) -> Dict[str, Any]:
         """Generate image using Google Colab"""
         try:
-            # This would implement the Colab API integration
-            # 내부 구현
-            logger.warning("Colab integration not yet implemented")
-            return {
-                "success": False,
-                "error": "Colab integration not yet implemented",
-                "service": "colab"
-            }
+            import httpx
+            
+            payload = {"prompt": prompt}
+            logger.info(f"Sending to Colab: {self.notebook_url}/generate")
+            
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.notebook_url}/generate",
+                    json=payload
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("success"):
+                        # Base64 이미지를 파일로 저장
+                        import base64
+                        from PIL import Image
+                        from io import BytesIO
+                        
+                        img_data = base64.b64decode(result["image"])
+                        image = Image.open(BytesIO(img_data))
+                        
+                        # 파일명 생성
+                        filename = kwargs.get("filename", "colab_generated.png")
+                        output_dir = kwargs.get("output_dir", "data/gallery_images/reflection")
+                        image_path = f"{output_dir}/{filename}"
+                        
+                        # 이미지 저장
+                        image.save(image_path)
+                        
+                        return {
+                            "success": True,
+                            "image_path": image_path,
+                            "prompt": prompt,
+                            "generation_time": 30.0,
+                            "service": "colab"
+                        }
+                
+                logger.error(f"Colab request failed: {response.status_code}")
+                return {
+                    "success": False,
+                    "error": f"HTTP {response.status_code}: {response.text}",
+                    "service": "colab"
+                }
                     
         except Exception as e:
             logger.error(f"Colab generation failed: {e}")
