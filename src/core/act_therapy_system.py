@@ -20,6 +20,7 @@ from ..therapy.prompt_architect import PromptArchitect
 from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
 from ..services.image_service_wrapper import ColabImageGenerator, ExternalImageGenerator
+from ..services.emotion_analyzer import get_emotion_analyzer
 from ..managers.gallery_manager import GalleryManager, GalleryItem
 from ..therapy.docent_message import DocentMessageSystem
 
@@ -75,7 +76,7 @@ class ACTTherapySystem:
         """이미지 생성 서비스 초기화 (환경변수에 따라 선택)"""
         
         # 환경변수에서 이미지 생성 서비스 타입 확인
-        service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local_gpu")
+        service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local")
         
         try:
             if service_type == "colab":
@@ -83,32 +84,18 @@ class ACTTherapySystem:
                 logger.info("Colab 이미지 생성 서비스를 초기화합니다...")
                 colab_notebook_url = os.getenv("COLAB_NOTEBOOK_URL")
                 if not colab_notebook_url:
-                    logger.warning("COLAB_NOTEBOOK_URL이 설정되지 않았습니다. local_gpu로 대체합니다.")
-                    service_type = "local_gpu"
+                    logger.warning("COLAB_NOTEBOOK_URL이 설정되지 않았습니다. local로 대체합니다.")
+                    service_type = "local"
                 else:
                     # Colab용 래퍼 클래스 사용
                     self.image_generator = ColabImageGenerator(colab_notebook_url)
                     logger.info("Colab 이미지 생성 서비스 초기화 완료")
                     return
             
-            elif service_type == "external_gpu":
-                # 외부 GPU 서비스 사용
-                logger.info("외부 GPU 이미지 생성 서비스를 초기화합니다...")
-                external_endpoint = os.getenv("EXTERNAL_GPU_ENDPOINT")
-                if not external_endpoint:
-                    logger.warning("EXTERNAL_GPU_ENDPOINT가 설정되지 않았습니다. local_gpu로 대체합니다.")
-                    service_type = "local_gpu"
-                else:
-                    # 외부 GPU용 래퍼 클래스 사용  
-                    self.image_generator = ExternalImageGenerator(external_endpoint)
-                    logger.info("외부 GPU 이미지 생성 서비스 초기화 완료")
-                    return
-            
-            # local_gpu 또는 기본값
-            if service_type == "local_gpu" or True:  # 기본값으로 처리
-                logger.info("로컬 GPU 이미지 생성 서비스를 초기화합니다...")
-                self.image_generator = ImageGenerator(model_path)
-                logger.info("로컬 GPU 이미지 생성 서비스 초기화 완료")
+            # local 또는 기본값
+            logger.info("로컬 이미지 생성 서비스를 초기화합니다...")
+            self.image_generator = ImageGenerator(model_path)
+            logger.info("로컬 이미지 생성 서비스 초기화 완료")
                 
         except Exception as e:
             logger.error(f"이미지 생성 서비스 초기화 실패: {e}")
@@ -320,28 +307,52 @@ class ACTTherapySystem:
     def _analyze_emotion_with_gpt(
         self, diary_text: str, user_id: str = "anonymous"
     ) -> Dict[str, Any]:
-        """GPT를 통한 감정 분석"""
+        """감정 분석 (환경변수에 따라 GoEmotions 또는 GPT 사용)"""
+        
+        # 환경변수에서 감정 분석 서비스 확인
+        analysis_service = os.getenv("EMOTION_ANALYSIS_SERVICE", "local")
+        
         try:
-            # GPT로 감정 분석 요청
-            analysis_result = self.gpt_service.analyze_emotion(
-                diary_text, user_id=user_id
-            )
-
-            if analysis_result["success"]:
+            if analysis_service in ["local", "colab"]:
+                # GoEmotions 분석기 사용 (로컬 또는 Colab)
+                service_type = "local_goEmotions" if analysis_service == "local" else "colab_goEmotions"
+                emotion_analyzer = get_emotion_analyzer(service_type)
+                analysis_result = emotion_analyzer.analyze_emotions(diary_text)
+                
+                logger.info(f"{analysis_service} GoEmotions 감정 분석 결과: {analysis_result}")
+                
                 return {
                     "diary_text": diary_text,
-                    "keywords": analysis_result.get("keywords", ["neutral"]),
-                    "vad_scores": analysis_result.get("vad_scores", (0.0, 0.0, 0.0)),
-                    "analysis_confidence": analysis_result.get("confidence", 0.8),
-                    "generation_method": "gpt",
+                    "keywords": analysis_result["keywords"],
+                    "vad_scores": analysis_result["vad_scores"],
+                    "analysis_confidence": analysis_result["confidence"],
+                    "generation_method": f"{analysis_service}_goEmotions",
+                    "primary_emotion": analysis_result["primary_emotion"],
+                    "emotional_intensity": analysis_result["emotional_intensity"],
+                    "top_emotions": analysis_result.get("top_emotions", {})
                 }
+            
             else:
-                raise RuntimeError(
-                    f"GPT 감정 분석 실패: {analysis_result.get('error', 'Unknown error')}"
+                # GPT 분석기 사용 (기존 방식)
+                analysis_result = self.gpt_service.analyze_emotion(
+                    diary_text, user_id=user_id
                 )
 
+                if analysis_result["success"]:
+                    return {
+                        "diary_text": diary_text,
+                        "keywords": analysis_result.get("keywords", ["neutral"]),
+                        "vad_scores": analysis_result.get("vad_scores", (0.0, 0.0, 0.0)),
+                        "analysis_confidence": analysis_result.get("confidence", 0.8),
+                        "generation_method": "gpt",
+                    }
+                else:
+                    raise RuntimeError(
+                        f"GPT 감정 분석 실패: {analysis_result.get('error', 'Unknown error')}"
+                    )
+
         except Exception as e:
-            logger.error(f"GPT 감정 분석 실패: {e}")
+            logger.error(f"감정 분석 실패 (서비스: {analysis_service}): {e}")
             raise
 
     def upload_image_to_supabase(self, image, user_id, prefix="generated/"):
@@ -390,10 +401,10 @@ class ACTTherapySystem:
 
 
             # 환경변수에 따라 설정된 이미지 생성 서비스 사용
-            service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local_gpu")
+            service_type = os.getenv("IMAGE_GENERATION_SERVICE", "local")
             
-            if service_type == "local_gpu":
-                # 로컬 GPU 서비스 (ImageGenerator)
+            if service_type == "local":
+                # 로컬 서비스 (ImageGenerator)
                 generation_result = self.image_generator.generate_image(
                     prompt=reflection_prompt,
                     width=512,
@@ -405,12 +416,12 @@ class ACTTherapySystem:
                 if generation_result.get("success"):
                     final_image = generation_result["image"]
                     image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
-                    print(f"이미지 생성 성공 (서비스: local_gpu)")
+                    print(f"이미지 생성 성공 (서비스: local)")
                 else:
                     raise Exception(generation_result.get('error', 'Unknown error'))
                     
             else:
-                # Colab 또는 External GPU 서비스 (래퍼 클래스)
+                # Colab 서비스 (래퍼 클래스)
                 generation_result = self.image_generator.generate_image(
                     prompt=reflection_prompt,
                     output_dir="data/gallery_images/reflection",

@@ -229,16 +229,9 @@ class ImageServiceFactory:
     def create_service(service_type: str, **kwargs) -> ImageGenerationService:
         """Create image generation service based on type"""
         
-        if service_type == "local_gpu":
+        if service_type == "local":
             model_path = kwargs.get("model_path", "runwayml/stable-diffusion-v1-5")
             return LocalGPUService(model_path)
-        
-        elif service_type == "external_gpu":
-            endpoint = kwargs.get("endpoint")
-            if not endpoint:
-                raise ValueError("External GPU endpoint is required")
-            api_key = kwargs.get("api_key")
-            return ExternalGPUService(endpoint, api_key)
         
         elif service_type == "colab":
             notebook_url = kwargs.get("notebook_url")
@@ -265,7 +258,6 @@ def get_image_service() -> ImageGenerationService:
         
         _image_service = ImageServiceFactory.create_service(
             service_type=settings.image_generation_service,
-            endpoint=settings.external_gpu_endpoint,
             notebook_url=settings.colab_notebook_url
         )
     
