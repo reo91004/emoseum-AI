@@ -37,8 +37,8 @@ Emoseum은 ACT(Acceptance and Commitment Therapy) 이론에 기반한 디지털 
 
 ```bash
 # 저장소 클론
-git clone https://github.com/your-team/emoseum.git
-cd emoseum
+git clone https://github.com/Emoseum/AI_Backend.git
+cd AI_Backend
 
 # 가상환경 생성 및 활성화
 python -m venv venv

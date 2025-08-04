@@ -7,6 +7,9 @@
 # main.py의 CLI는 이 클래스의 메서드를 호출하여 시스템과 상호작용한다.
 # ==============================================================================
 
+##
+from PIL import Image
+##
 import logging
 from pathlib import Path
 from datetime import datetime
@@ -18,6 +21,15 @@ from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
 from ..managers.gallery_manager import GalleryManager, GalleryItem
 from ..therapy.curator_message import CuratorMessageSystem
+
+import os
+import requests
+from io import BytesIO
+import uuid
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+BUCKET = "emoseum-images"
 
 logger = logging.getLogger(__name__)
 
@@ -284,10 +296,34 @@ class ACTTherapySystem:
             logger.error(f"GPT 감정 분석 실패: {e}")
             raise
 
+    def upload_image_to_supabase(self, image, user_id, prefix="generated/"):
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+
+        filename = f"{prefix}diary_{user_id}_{uuid.uuid4().hex}.png"
+
+        response = requests.post(
+            f"{SUPABASE_URL}/storage/v1/object/emoseum-images/{filename}",
+            headers={
+                "apikey": SUPABASE_SERVICE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "Content-Type": "image/png"
+            },
+            data=buffer
+        )
+
+        if response.status_code >= 400:
+            logger.warning(f"Supabase 업로드 실패: {response.text}")
+            return None
+
+        public_url = f"{SUPABASE_URL}/storage/v1/object/public/emoseum-images/{filename}"
+        return public_url
+    
     def _create_gpt_reflection_image(
         self, user, emotion_analysis: Dict[str, Any], diary_text: str
     ) -> Dict[str, Any]:
-        """GPT를 통한 Reflection 이미지 생성"""
+        """GPT를 통한 Reflection 이미지 생성 (이미지 생성 생략하고 fallback으로만 처리)"""
 
         coping_style = "balanced"
         if user.psychometric_results:
@@ -303,30 +339,127 @@ class ACTTherapySystem:
                 visual_preferences=user.visual_preferences.__dict__,
                 user_id=user.user_id,
             )
+            
+            ## 기본 이미지로 설정
+            # print("이미지 생성 생략, fallback 이미지로 대체")
+            # fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
+            # fallback_image = Image.open(fallback_image_path)
+            # image_url = self.upload_image_to_supabase(fallback_image, user.user_id, prefix="generated/")
 
-            generation_result = self.image_generator.generate_image(
-                prompt=reflection_prompt,
-                width=512,
-                height=512,
-                num_inference_steps=20,
-                guidance_scale=7.5,
-            )
 
-            if not generation_result["success"]:
-                raise RuntimeError(f"이미지 생성 실패: {generation_result['error']}")
+            # Colab을 통한 이미지 생성 시도
+            try:
+                import httpx
+                import base64
+                from io import BytesIO
+                
+                colab_url = os.getenv('COLAB_NOTEBOOK_URL')
+                if colab_url:
+                    payload = {"prompt": reflection_prompt}
+                    
+                    with httpx.Client(timeout=120.0) as client:
+                        response = client.post(f"{colab_url}/generate", json=payload)
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            if result.get("success"):
+                                # Base64 이미지를 PIL Image로 변환
+                                img_data = base64.b64decode(result["image"])
+                                final_image = Image.open(BytesIO(img_data))
+                                image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
+                                print(f"Colab 이미지 생성 성공")
+                            else:
+                                raise Exception("Colab generation failed")
+                        else:
+                            raise Exception(f"HTTP {response.status_code}")
+                else:
+                    raise Exception("COLAB_NOTEBOOK_URL not set")
+                    
+            except Exception as e:
+                print(f"이미지 생성 실패, fallback 이미지로 대체: {e}")
+                fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
+                final_image = Image.open(fallback_image_path)
+                image_url = self.upload_image_to_supabase(final_image, user.user_id, prefix="generated/")
 
             return {
                 "prompt": reflection_prompt,
-                "image": generation_result["image"],
-                "image_path": generation_result["metadata"]["timestamp"],
-                "generation_time": generation_result["metadata"]["generation_time"],
-                "prompt_tokens": 0,  # 실제로는 GPT 서비스에서 가져와야 함
+                "image": final_image,
+                "image_path": image_url,
+                "generation_time": 30.0,
+                "prompt_tokens": 0,
                 "safety_validated": True,
             }
 
         except Exception as e:
-            logger.error(f"이미지 생성 실패: {e}")
+            logger.error(f"이미지 생성 중 예외 발생: {e}")
             raise
+
+
+    # def _create_gpt_reflection_image(
+    #     self, user, emotion_analysis: Dict[str, Any], diary_text: str
+    # ) -> Dict[str, Any]:
+    #     """GPT를 통한 Reflection 이미지 생성"""
+
+    #     coping_style = "balanced"
+    #     if user.psychometric_results:
+    #         coping_style = user.psychometric_results[0].coping_style
+
+    #     self.prompt_architect.set_diary_context(diary_text)
+
+    #     try:
+    #         reflection_prompt = self.prompt_architect.create_reflection_prompt(
+    #             emotion_keywords=emotion_analysis["keywords"],
+    #             vad_scores=emotion_analysis["vad_scores"],
+    #             coping_style=coping_style,
+    #             visual_preferences=user.visual_preferences.__dict__,
+    #             user_id=user.user_id,
+    #         )
+
+    #         generation_result = self.image_generator.generate_image(
+    #             prompt=reflection_prompt,
+    #             width=512,
+    #             height=512,
+    #             num_inference_steps=20,
+    #             guidance_scale=7.5,
+    #         )
+
+    #         # if not generation_result["success"]:
+    #         #     raise RuntimeError(f"이미지 생성 실패: {generation_result['error']}")
+
+    #         generation_result["success"] = False
+    #         generation_result["error"] = "이미지 생성 강제 실패 (CPU fallback 모드)"
+
+    #         if generation_result["success"]:
+    #             image = generation_result["image"]
+    #             image_url = self.upload_image_to_supabase(image, user.user_id, prefix="generated/")
+
+    #             return {
+    #                 "prompt": reflection_prompt,
+    #                 "image": image,
+    #                 "image_path": image_url,
+    #                 "generation_time": generation_result["metadata"]["generation_time"],
+    #                 "prompt_tokens": 0,
+    #                 "safety_validated": True,
+    #             }
+
+    #         else:
+    #             print(f"이미지 생성 실패, fallback 이미지로 대체: {generation_result['error']}")
+    #             fallback_image_path = Path("prompt_test/test_images/test_image_1.png")
+    #             fallback_image = Image.open(fallback_image_path)
+    #             image_url = self.upload_image_to_supabase(fallback_image, user.user_id, prefix="generated/")
+
+    #             return {
+    #                 "prompt": reflection_prompt,
+    #                 "image": fallback_image,
+    #                 "image_path": image_url,
+    #                 "generation_time": 0.0,
+    #                 "prompt_tokens": 0,
+    #                 "safety_validated": True,
+    #             }
+
+    #     except Exception as e:
+    #         logger.error(f"이미지 생성 중 예외 발생: {e}")
+    #         raise
 
     def complete_guestbook(
         self,
@@ -878,3 +1011,5 @@ class ACTTherapySystem:
             "gpt_integration_complete": True,
             "mongodb_migration_complete": True,
         }
+    
+

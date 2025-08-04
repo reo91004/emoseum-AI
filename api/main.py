@@ -1,5 +1,7 @@
 # api/main.py
-
+##
+from fastapi.responses import JSONResponse
+##
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -14,7 +16,7 @@ from .database.collections import Collections
 from .dependencies import initialize_act_therapy_system
 
 # Import routers
-from .routers import auth, users, therapy, gallery, training, system
+from .routers import auth, users, therapy, gallery, training, system, diary_sync, psychometric
 
 # Setup logging
 logging.basicConfig(
@@ -76,6 +78,8 @@ app.include_router(therapy.router)
 app.include_router(gallery.router)
 app.include_router(training.router)
 app.include_router(system.router)
+app.include_router(diary_sync.router)
+app.include_router(psychometric.router)
 
 
 @app.get("/", include_in_schema=False)
@@ -99,13 +103,27 @@ async def health_check():
 # Exception handlers
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
-    return {"error": "Endpoint not found", "detail": "The requested endpoint does not exist"}
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Endpoint not found",
+            "detail": "The requested endpoint does not exist"
+        }
+    )
+    #return {"error": "Endpoint not found", "detail": "The requested endpoint does not exist"}
 
 
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
     logger.error(f"Internal server error: {exc}")
-    return {"error": "Internal server error", "detail": "An unexpected error occurred"}
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": "An unexpected error occurred"
+        }
+    )
+    #return {"error": "Internal server error", "detail": "An unexpected error occurred"}
 
 
 if __name__ == "__main__":

@@ -78,6 +78,11 @@ class PromptArchitect:
             f"Reflection 프롬프트 생성 완료: {len(generated_prompt)} 문자"
         )
 
+        ##
+        with open("./prompt_test/generated_prompt.txt", "w", encoding="utf-8") as f:
+            f.write(generated_prompt)
+        ##
+
         return generated_prompt
 
     def create_guided_question(

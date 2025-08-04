@@ -46,11 +46,11 @@ langdetect>=1.0.9
 # =============================================================================
 # Database and Storage
 # =============================================================================
-sqlite3
-sqlalchemy>=2.0.0
-alembic>=1.13.0
-motor>=3.3.0
-pymongo>=4.6.0
+# sqlite3
+# sqlalchemy>=2.0.0
+# alembic>=1.13.0
+# motor>=3.3.0
+# pymongo>=4.6.0
 
 # =============================================================================
 # Web and API Framework
@@ -151,10 +151,10 @@ cachetools>=5.3.0
 # System and OS Integration
 # =============================================================================
 pathlib
-shutil
-tempfile
-platform
-subprocess
+#shutil
+#tempfile
+#platform
+#subprocess
 
 # =============================================================================
 # Optional GPU Acceleration (CUDA)
@@ -190,7 +190,7 @@ kiwipiepy>=0.17.0
 # Additional Therapy-Specific Libraries
 # =============================================================================
 # Psychology and therapy assessment tools
-psychopy>=2023.2.0  # For psychological experiments if needed
+#psychopy>=2023.2.0  # For psychological experiments if needed
 # scikit-bio>=0.5.8  # For biological data if needed
 
 # =============================================================================
@@ -198,7 +198,7 @@ psychopy>=2023.2.0  # For psychological experiments if needed
 # =============================================================================
 gunicorn>=21.2.0
 supervisor>=4.2.5
-nginx-python>=1.1.0
+#nginx-python>=1.1.0
 
 # =============================================================================
 # Version Compatibility Notes

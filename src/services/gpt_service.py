@@ -310,6 +310,8 @@ class GPTService:
 
         if response["success"]:
             try:
+                logger.info(f"GPT 감정 분석 응답: {response['content']}")
+                
                 # JSON 파싱 시도
                 analysis_data = self._parse_emotion_analysis_strict(response["content"])
 
@@ -325,6 +327,7 @@ class GPTService:
                 }
             except Exception as e:
                 logger.error(f"감정 분석 결과 파싱 실패: {e}")
+                logger.error(f"GPT 응답 내용: {response['content']}")
                 return {
                     "success": False,
                     "error": f"Emotion analysis parsing failed: {str(e)}",
