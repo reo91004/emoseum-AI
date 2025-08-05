@@ -43,9 +43,9 @@ async def update_phq9_score(request: PHQ9Request):
         
         # coping_style 계산
         if request.phq9_score >= 15 or cesd_score >= 20:
-            coping_style = "avoidant"
+            coping_style = "avoidance_oriented"
         elif request.phq9_score <= 5 and cesd_score <= 10:
-            coping_style = "confrontational"
+            coping_style = "task_oriented"
         else:
             coping_style = "balanced"
             
@@ -99,9 +99,9 @@ async def update_cesd_score(request: CESDRequest):
         
         # coping_style 계산
         if phq9_score >= 15 or request.cesd_score >= 20:
-            coping_style = "avoidant"
+            coping_style = "avoidance_oriented"
         elif phq9_score <= 5 and request.cesd_score <= 10:
-            coping_style = "confrontational"
+            coping_style = "task_oriented"
         else:
             coping_style = "balanced"
             

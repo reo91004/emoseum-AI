@@ -625,10 +625,10 @@ class PersonalizationManager:
         recommendations = {}
 
         # 대처 스타일 기반 권장사항
-        if coping_style == "avoidant":
+        if coping_style == "avoidance_oriented":
             recommendations["prompt_style"] = "더 부드럽고 은유적인 표현 사용"
             recommendations["message_guidance"] = "간접적이고 보호적인 도슨트 메시지"
-        elif coping_style == "confrontational":
+        elif coping_style == "task_oriented":
             recommendations["prompt_style"] = "더 직설적이고 명확한 감정 표현"
             recommendations["message_guidance"] = "직접적이고 용기를 강조하는 메시지"
 

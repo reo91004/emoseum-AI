@@ -471,12 +471,24 @@ class ACTTherapySystem:
         if not gallery_item or gallery_item.user_id != user_id:
             raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
 
-        guided_question = self.prompt_architect.create_guided_question(
-            artwork_title, gallery_item.emotion_keywords, user_id
+        # 작품 설명 생성
+        description_result = self.gpt_service.generate_artwork_description(
+            diary_text=gallery_item.diary_text,
+            emotion_keywords=gallery_item.emotion_keywords,
+            image_prompt=gallery_item.reflection_prompt,
+            artwork_title=artwork_title,
+            user_id=user_id
         )
+        
+        artwork_description = ""
+        if description_result.get("success", False):
+            artwork_description = description_result.get("description", "")
+            logger.info(f"작품 설명 생성 성공: {artwork_description}")
+        else:
+            logger.warning(f"작품 설명 생성 실패: {description_result.get('error', 'Unknown error')}")
 
         success = self.gallery_manager.complete_artwork_title(
-            gallery_item_id, artwork_title, guided_question
+            gallery_item_id, artwork_title, artwork_description
         )
 
         if not success:
@@ -496,11 +508,10 @@ class ACTTherapySystem:
             "step": "defusion_complete",
             "artwork_title": {
                 "title": artwork_title,
-                "guided_question": guided_question,
+                "description": artwork_description,
             },
             "personalization_updates": personalization_updates,
             "next_step": "docent_message",
-            "guided_question": guided_question,
             "gpt_docent_ready": True,
         }
 
@@ -942,8 +953,8 @@ class ACTTherapySystem:
         """심리검사 결과 해석"""
         interpretations = {
             "coping_style_description": {
-                "avoidant": "감정적 상황을 회피하거나 우회하는 경향이 있습니다.",
-                "confrontational": "감정적 상황에 직면하고 적극적으로 대처하는 경향이 있습니다.",
+                "avoidance_oriented": "감정적 상황을 회피하거나 우회하는 경향이 있습니다.",
+                "task_oriented": "감정적 상황에 직면하고 적극적으로 대처하는 경향이 있습니다.",
                 "balanced": "상황에 따라 유연하게 대처하는 균형잡힌 스타일을 보입니다.",
             }[result.coping_style],
             "severity_description": {
@@ -961,7 +972,7 @@ class ACTTherapySystem:
         """심리검사 기반 권장사항"""
         recommendations = []
 
-        if result.coping_style == "avoidant":
+        if result.coping_style == "avoidance_oriented":
             recommendations.extend(
                 [
                     "부드럽고 은유적인 감정 표현을 통해 점진적으로 감정에 다가가보세요.",
@@ -969,7 +980,7 @@ class ACTTherapySystem:
                     "감정을 안전한 거리에서 관찰하고 수용하는 연습을 해보세요.",
                 ]
             )
-        elif result.coping_style == "confrontational":
+        elif result.coping_style == "task_oriented":
             recommendations.extend(
                 [
                     "감정을 직접적이고 명확하게 표현하는 것이 도움이 될 것 같습니다.",

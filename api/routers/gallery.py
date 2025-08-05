@@ -150,7 +150,11 @@ async def get_gallery_item(
             diary_text=item.get("diary_text", ""),
             emotion_analysis=EmotionAnalysis(**item["emotion_analysis"]) if item.get("emotion_analysis") else None,
             generated_image=GeneratedImage(**item["generated_image"]) if item.get("generated_image") else None,
-            artwork_title=ArtworkTitle(**item["artwork_title"]) if item.get("artwork_title") else None,
+            artwork_title=ArtworkTitle(
+                title=item.get("artwork_title", ""),
+                description=item.get("artwork_description", ""),
+                reflection=""
+            ) if item.get("artwork_title") else None,
             docent_message=DocentMessage(**item["docent_message"]) if item.get("docent_message") else None,
             journey_stage=item["journey_stage"],
             is_completed=item["is_completed"]

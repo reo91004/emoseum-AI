@@ -28,7 +28,7 @@ class PsychometricResult:
     cesd_score: int = 0
     meaq_score: int = 0  # 감정 회피 척도
     ciss_score: int = 0  # 대처 스타일
-    coping_style: str = "balanced"  # confrontational, avoidant, balanced
+    coping_style: str = "balanced"  # task_oriented, avoidance_oriented, balanced
     severity_level: str = "mild"  # mild, moderate, severe
     test_date: str = ""
 
@@ -100,15 +100,7 @@ class UserManager:
             "user_id": user_id,
             "created_date": now,
             "last_updated": now,
-            "psychometric_results": {
-                "phq9_score": 0,
-                "cesd_score": 0,
-                "meaq_score": 0,
-                "ciss_score": 0,
-                "coping_style": "balanced",
-                "severity_level": "mild",
-                "assessment_date": now
-            },
+            "psychometric_results": [],
             "visual_preferences": asdict(VisualPreferences()),
             "gpt_settings": {
                 "daily_token_limit": 1000,
@@ -258,6 +250,22 @@ class UserManager:
         )
         
         try:
+            # 기존 psychometric_results 구조 확인 및 수정
+            existing_user = self.users_collection.find_one({"user_id": user_id})
+            if existing_user and "psychometric_results" in existing_user:
+                # psychometric_results가 객체인 경우 배열로 변환
+                if isinstance(existing_user["psychometric_results"], dict):
+                    # 기존 객체를 배열의 첫 번째 요소로 변환
+                    old_result = existing_user["psychometric_results"]
+                    self.users_collection.update_one(
+                        {"user_id": user_id},
+                        {
+                            "$set": {
+                                "psychometric_results": [old_result]
+                            }
+                        }
+                    )
+            
             # MongoDB에 결과 추가
             self.users_collection.update_one(
                 {"user_id": user_id},
@@ -283,18 +291,18 @@ class UserManager:
         confrontation_tendency = ciss_score / 100.0
 
         if avoidance_tendency > 0.7:
-            return "avoidant"
+            return "avoidance_oriented"
         elif confrontation_tendency > 0.7:
-            return "confrontational"
+            return "task_oriented"
         else:
             return "balanced"
         
     def _determine_coping_style_from_scores(self, phq9_score: int, cesd_score: int) -> str:
         """PHQ-9, CES-D 점수 이용"""
         if phq9_score >= 15 or cesd_score >= 20:
-            return "avoidant"
+            return "avoidance_oriented"
         elif phq9_score <= 5 and cesd_score <= 10:
-            return "confrontational"
+            return "task_oriented"
         else:
             return "balanced"
 

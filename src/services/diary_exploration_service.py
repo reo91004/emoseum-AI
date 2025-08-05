@@ -65,11 +65,16 @@ class DiaryExplorationService:
             if not self.gpt_service:
                 raise ValueError("GPT 서비스가 초기화되지 않았습니다")
                 
-            response = self.gpt_service.get_completion(
-                system_message=system_message,
-                user_message=user_message,
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = self.gpt_service._make_api_call(
+                messages=messages,
                 temperature=0.7,
-                max_tokens=800
+                max_tokens=800,
+                purpose="diary_exploration"
             )
             
             # JSON 응답 파싱
@@ -126,11 +131,16 @@ class DiaryExplorationService:
             if not self.gpt_service:
                 raise ValueError("GPT 서비스가 초기화되지 않았습니다")
                 
-            response = self.gpt_service.get_completion(
-                system_message=system_message,
-                user_message=user_message,
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+            
+            response = self.gpt_service._make_api_call(
+                messages=messages,
                 temperature=0.7,
-                max_tokens=600
+                max_tokens=600,
+                purpose="diary_exploration_follow_up"
             )
             
             # JSON 응답 파싱
@@ -264,7 +274,7 @@ class DiaryExplorationService:
         # 단일 질문 시스템: 1개 질문만 생성
         customized_questions = []
         question = default_questions[0] if default_questions else {
-            "question": "Can you describe in more detail the specific situation that led to this emotion?",
+            "question": "What specific situation led to this feeling?",
             "category": "emotion_cause",
             "explanation": "Helps clarify the cause of emotions by making the situation more specific."
         }
@@ -291,7 +301,7 @@ class DiaryExplorationService:
         # 랜덤하게 후속 질문 선택 (더 다양한 경험 제공)
         import random
         question_data = random.choice(follow_up_questions) if follow_up_questions else {
-            "question": "What new thoughts or feelings are coming up for you as you reflect on this?",
+            "question": "What new emotions are you noticing now?",
             "category": "emotion_detail",
             "explanation": "Explores emerging emotions and thoughts from reflection."
         }
@@ -337,17 +347,17 @@ class DiaryExplorationService:
         """YAML 로드 실패 시 하드코딩된 fallback 질문들"""
         return [
             {
-                "question": "Can you describe in more detail the specific situation or moment that led to this emotion?",
+                "question": "What specific event triggered this emotion?",
                 "category": "emotion_cause", 
                 "explanation": "Helps clarify the cause of emotions by making the situation more specific."
             },
             {
-                "question": "Where in your body do you feel this emotion most strongly?",
+                "question": "Where in your body do you feel this?",
                 "category": "sensation",
                 "explanation": "Allows you to recognize emotions more concretely through physical sensations."
             },
             {
-                "question": "If someone you love was in the same situation, what advice would you want to give them?",
+                "question": "What would you tell a friend?",
                 "category": "perspective",
                 "explanation": "Provides a new perspective by looking from another person's point of view."
             }
@@ -382,17 +392,17 @@ class DiaryExplorationService:
         """YAML 로드 실패 시 하드코딩된 fallback 후속 질문들"""
         return [
             {
-                "question": "How has sharing that made you feel?",
+                "question": "How does it feel to share this?",
                 "category": "sensation",
                 "explanation": "Acknowledges the user's sharing and explores current feelings."
             },
             {
-                "question": "What emotions are coming up for you as you reflect on what you just shared?",
+                "question": "What emotions are coming up for you now?",
                 "category": "emotion_detail",
                 "explanation": "Helps identify new emotions that may have emerged from reflection."
             },
             {
-                "question": "Is there anything else about this experience that feels important to explore?",
+                "question": "What else about this feels important to explore?",
                 "category": "perspective",
                 "explanation": "Allows the user to guide the exploration in their preferred direction."
             }

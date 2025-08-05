@@ -103,9 +103,9 @@ async def conduct_assessment(
         result = act_system.conduct_psychometric_assessment(
             user_id=current_user["user_id"],
             phq9_score=assessment.phq9_score,
-            cesd_score=assessment.cesd_score
-            #meaq_score=assessment.meaq_score,
-            #ciss_score=assessment.ciss_score
+            cesd_score=assessment.cesd_score,
+            meaq_score=assessment.meaq_score,
+            ciss_score=assessment.ciss_score
         )
         
         if not result:
@@ -132,9 +132,13 @@ async def conduct_assessment(
         raise
     except Exception as e:
         logger.error(f"Assessment error: {e}")
+        logger.error(f"Assessment data: phq9={assessment.phq9_score}, cesd={assessment.cesd_score}, meaq={assessment.meaq_score}, ciss={assessment.ciss_score}")
+        logger.error(f"User ID: {current_user['user_id']}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="평가 실패"
+            detail=f"평가 실패: {str(e)}"
         )
 
 

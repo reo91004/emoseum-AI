@@ -33,9 +33,9 @@ class GalleryItem:
         reflection_prompt: str,
         reflection_image_path: str,
         artwork_title: str = "",
+        artwork_description: str = "",
         docent_message: Dict[str, Any] = None,
         message_reactions: List[str] = None,
-        guided_question: str = "",
         created_date: str = "",
         coping_style: str = "balanced",
         # GPT 관련 새 필드들
@@ -56,9 +56,9 @@ class GalleryItem:
         self.reflection_prompt = reflection_prompt
         self.reflection_image_path = reflection_image_path
         self.artwork_title = artwork_title
+        self.artwork_description = artwork_description
         self.docent_message = docent_message or {}
         self.message_reactions = message_reactions or []
-        self.guided_question = guided_question
         self.created_date = created_date or datetime.now().isoformat()
         self.coping_style = coping_style
 
@@ -82,9 +82,9 @@ class GalleryItem:
             "reflection_prompt": self.reflection_prompt,
             "reflection_image_path": self.reflection_image_path,
             "artwork_title": self.artwork_title,
+            "artwork_description": self.artwork_description,
             "docent_message": self.docent_message,
             "message_reactions": self.message_reactions,
-            "guided_question": self.guided_question,
             "created_date": self.created_date,
             "coping_style": self.coping_style,
             # GPT 메타데이터
@@ -239,9 +239,9 @@ class GalleryManager:
             "reflection_prompt": reflection_prompt,
             "reflection_image_path": str(reflection_path),
             "artwork_title": "",
+            "artwork_description": "",
             "docent_message": {},
             "message_reactions": [],
-            "guided_question": "",
             "created_date": now.isoformat(),
             "coping_style": coping_style,
             # GPT 메타데이터
@@ -269,7 +269,8 @@ class GalleryManager:
         self,
         item_id: str,
         artwork_title: str,
-        guided_question: str,
+        artwork_description: str = "",
+        guided_question: str = "",  # 하위 호환성을 위해 기본값 유지
     ) -> bool:
         """작품 제목 작성 완료 (ACT 3단계 완료)"""
 
@@ -279,7 +280,7 @@ class GalleryManager:
                 {
                     "$set": {
                         "artwork_title": artwork_title,
-                        "guided_question": guided_question,
+                        "artwork_description": artwork_description,
                     }
                 },
             )
@@ -433,9 +434,9 @@ class GalleryManager:
             reflection_prompt=doc.get("reflection_prompt", ""),
             reflection_image_path=doc.get("reflection_image_path", ""),
             artwork_title=doc.get("artwork_title", ""),
+            artwork_description=doc.get("artwork_description", ""),
             docent_message=doc.get("docent_message", {}),
             message_reactions=doc.get("message_reactions", []),
-            guided_question=doc.get("guided_question", ""),
             created_date=doc.get("created_date", ""),
             coping_style=doc.get("coping_style", "balanced"),
             # GPT 메타데이터

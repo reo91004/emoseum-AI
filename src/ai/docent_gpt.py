@@ -217,7 +217,6 @@ class DocentGPT:
             "diary_excerpt": self._create_diary_excerpt(gallery_item.diary_text),
             "artwork_title_data": {
                 "title": gallery_item.artwork_title or "",
-                "guided_question": gallery_item.guided_question or "",
             },
             "user_journey": {
                 "member_since": user_profile.created_date,

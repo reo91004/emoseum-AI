@@ -238,6 +238,7 @@ async def create_artwork_title(
             session_id=session_id,
             artwork_title=ArtworkTitle(
                 title=artwork_title.title,
+                description=result.get("artwork_title", {}).get("description", ""),
                 reflection=artwork_title.reflection or "",
             ),
             next_stage=JourneyStage.CLOSURE,
@@ -555,6 +556,7 @@ async def get_session_details(
             artwork_title=(
                 ArtworkTitle(
                     title=gallery_item.artwork_title,
+                    description=gallery_item.artwork_description or "",
                     reflection="",
                 )
                 if gallery_item.artwork_title

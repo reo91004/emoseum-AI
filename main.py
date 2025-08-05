@@ -351,11 +351,8 @@ class EmoseumCLI:
             category = first_question.get("category", "general")
             explanation = first_question.get("explanation", "")
             
-            print(f"\n{result.get('exploration_theme', 'Emotional Exploration')}")
-            print("=" * 50)
+            print(f"\n=== 감정 심화 탐색 ===")
             print(f"\n질문: {question_text}")
-            print(f"[{category}] {explanation}")
-            print(f"\n💡 {result.get('encouragement', 'Take your time exploring your emotions.')}")
             
             # 단계적 탐색 시작
             current_question = question_text
@@ -462,7 +459,10 @@ class EmoseumCLI:
 
             print("\n=== 작품 제목 작성 완료 ===")
             print(f"제목: {result['artwork_title']['title']}")
-            print(f"\n{result['guided_question']}")
+            
+            # 작품 설명 출력
+            if result['artwork_title'].get('description'):
+                print(f"작품 설명: {result['artwork_title']['description']}")
 
             # Step 4: Closure (도슨트 메시지)
             if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
@@ -626,6 +626,8 @@ class EmoseumCLI:
         elif next_step == "docent_message":
             print(f"\n✅ 작품 제목이 이미 작성되어 있습니다:")
             print(f"   제목: {journey_item.artwork_title}")
+            if journey_item.artwork_description:
+                print(f"   작품 설명: {journey_item.artwork_description}")
             if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
                 self._create_docent_message()
         else:
@@ -702,6 +704,8 @@ class EmoseumCLI:
                 print(f"    감정: {', '.join(item['emotion_keywords'])}")
                 if item["artwork_title"]:
                     print(f"    제목: {item['artwork_title']}")
+                if item.get("artwork_description"):
+                    print(f"    작품 설명: {item['artwork_description']}")
 
                 # 완성도 체크 변경: docent_message 기준
                 has_docent_message = (

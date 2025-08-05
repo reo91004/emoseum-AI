@@ -651,3 +651,94 @@ Tone: {docent_data[coping_style].get('tone', 'balanced')}"""
             "cache_enabled": self.cache_enabled,
             "cache_size": len(self.cache),
         }
+
+    def generate_artwork_description(
+        self,
+        diary_text: str,
+        emotion_keywords: List[str],
+        image_prompt: str,
+        artwork_title: str = "",
+        user_id: str = "anonymous",
+        max_tokens: int = 50,
+        temperature: float = 0.7,
+    ) -> Dict[str, Any]:
+        """작품 설명 생성 (미술관 스타일)"""
+        try:
+            logger.info(f"작품 설명 생성 시작: 제목='{artwork_title}', 키워드={emotion_keywords}")
+            
+            # YAML에서 artwork description 설정 로드
+            artwork_config = self.prompt_templates.get("artwork_description", {})
+            system_message = artwork_config.get("system_message", "")
+
+            if not system_message:
+                logger.error("YAML에서 artwork_description system_message를 찾을 수 없음")
+                raise ValueError("Artwork description system message not found in YAML")
+            
+            logger.info(f"System message 로드 성공: {len(system_message)} 문자")
+
+            # 사용자 메시지 구성
+            user_message = f"""Based on the following information, create a museum-style description for this artwork:
+
+Diary excerpt: "{diary_text[:200]}..."
+Emotion keywords: {', '.join(emotion_keywords)}
+Image prompt: "{image_prompt[:150]}..."
+Artwork title: "{artwork_title}"
+
+Generate a single, elegant sentence (15-25 words) that captures the emotional essence and artistic elements of this work."""
+
+            messages = [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
+            ]
+
+            # API 호출
+            logger.info(f"GPT API 호출 시작: max_tokens={max_tokens}, temperature={temperature}")
+            response = self._make_api_call(
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                purpose="artwork_description"
+            )
+
+            logger.info(f"GPT API 응답: success={response.get('success', False)}")
+            if not response.get("success", False):
+                logger.error(f"GPT API 호출 실패: {response.get('error', 'API call failed')}")
+                raise Exception(response.get("error", "API call failed"))
+
+            description = response.get("content", "").strip()
+            logger.info(f"생성된 설명: '{description}' (길이: {len(description)})")
+            
+            # 응답 검증
+            if not description:
+                raise ValueError("Empty artwork description generated")
+
+            # 길이 검증 (단어 수 15-25개)
+            word_count = len(description.split())
+            if word_count > 30:  # 약간의 여유를 둠
+                # 첫 번째 문장만 사용
+                first_sentence = description.split('.')[0] + '.'
+                description = first_sentence
+
+            logger.info(f"작품 설명 생성 완료: {len(description)}자, {word_count}단어")
+
+            return {
+                "success": True,
+                "description": description,
+                "word_count": len(description.split()),
+                "character_count": len(description),
+                "metadata": {
+                    "model": response.get("model", "unknown"),
+                    "token_usage": response.get("token_usage", {}),
+                    "user_id": user_id,
+                    "generation_method": "gpt_artwork_description"
+                }
+            }
+
+        except Exception as e:
+            logger.error(f"작품 설명 생성 실패: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "description": "",
+                "metadata": {}
+            }
