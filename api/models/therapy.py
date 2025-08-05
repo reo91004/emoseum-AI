@@ -54,6 +54,18 @@ class DiaryEntryRequest(BaseModel):
     diary_id: str = Field(..., description="중앙 서버의 일기 ID")
 
 
+class DiaryExplorationRequest(BaseModel):
+    diary_text: str = Field(..., min_length=10, max_length=1000, description="탐색할 일기 내용")
+    emotion_keywords: Optional[List[str]] = Field(None, description="감정 키워드 (선택사항)")
+
+
+class DiaryFollowUpRequest(BaseModel):
+    diary_text: str = Field(..., min_length=10, max_length=1000, description="원본 일기 내용")
+    previous_question: str = Field(..., min_length=5, max_length=500, description="이전 질문")
+    user_response: str = Field(..., min_length=1, max_length=2000, description="사용자의 답변")
+    emotion_keywords: Optional[List[str]] = Field(None, description="감정 키워드 (선택사항)")
+
+
 class GuestbookRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
     tags: List[str] = Field(..., min_items=1, max_items=5)
@@ -93,6 +105,21 @@ class DocentMessageResponse(BaseModel):
     session_id: str
     docent_message: DocentMessage
     journey_completed: bool = True
+
+
+class ExplorationQuestion(BaseModel):
+    question: str
+    category: str
+    explanation: str
+
+
+class DiaryExplorationResponse(BaseModel):
+    success: bool
+    questions: List[ExplorationQuestion]
+    exploration_theme: str
+    encouragement: str
+    emotion_analysis: Optional[EmotionAnalysis] = None
+    generation_timestamp: Optional[str] = None
 
 
 class TherapySessionDetailResponse(BaseModel):

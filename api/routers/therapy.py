@@ -19,6 +19,7 @@ from ..database.connection import get_database
 from ..database.collections import Collections
 from ..dependencies import get_current_user, get_act_therapy_system, RateLimiter
 from ..services.emoseum_client import emoseum_client
+from ..services.diary_exploration_service import get_api_diary_exploration_service
 from ..models.therapy import (
     StartSessionRequest,
     SessionResponse,
@@ -29,6 +30,10 @@ from ..models.therapy import (
     GuestbookResponse,
     DocentMessageResponse,
     TherapySessionDetailResponse,
+    DiaryExplorationRequest,
+    DiaryExplorationResponse,
+    DiaryFollowUpRequest,
+    ExplorationQuestion,
     JourneyStage,
     EmotionAnalysis,
     GeneratedImage,
@@ -311,6 +316,166 @@ async def generate_docent_message(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate curator message",
+        )
+
+
+@router.post("/diary/explore", response_model=DiaryExplorationResponse)
+async def explore_diary_emotions(
+    request: DiaryExplorationRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    exploration_service=Depends(get_api_diary_exploration_service),
+    rate_limit=Depends(diary_rate_limiter)
+):
+    """일기 내용에 대한 심화 탐색 질문 생성"""
+    try:
+        logger.info(f"사용자 {current_user['user_id']} 일기 심화 탐색 요청")
+        
+        # 일기 심화 탐색 질문 생성
+        result = await exploration_service.generate_exploration_questions(
+            diary_text=request.diary_text,
+            emotion_keywords=request.emotion_keywords
+        )
+        
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"질문 생성 실패: {result.get('error', 'Unknown error')}"
+            )
+        
+        # 응답 형식에 맞게 변환
+        questions = []
+        for q in result.get("questions", []):
+            questions.append(ExplorationQuestion(
+                question=q.get("question", ""),
+                category=q.get("category", "general"),
+                explanation=q.get("explanation", "")
+            ))
+        
+        # 감정 분석 데이터가 있으면 변환
+        emotion_analysis = None
+        if "emotion_analysis" in result:
+            ea = result["emotion_analysis"]
+            emotion_analysis = EmotionAnalysis(
+                keywords=ea.get("keywords", []),
+                vad_scores=ea.get("vad_scores", [0.5, 0.5, 0.5]),
+                primary_emotion=ea.get("primary_emotion", "neutral"),
+                intensity=ea.get("confidence", 0.5)  # confidence를 intensity로 사용
+            )
+        
+        return DiaryExplorationResponse(
+            success=True,
+            questions=questions,
+            exploration_theme=result.get("exploration_theme", "감정 탐색"),
+            encouragement=result.get("encouragement", "천천히 자신의 감정을 탐색해보세요."),
+            emotion_analysis=emotion_analysis,
+            generation_timestamp=result.get("generation_timestamp")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"일기 심화 탐색 중 오류 발생: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="일기 심화 탐색 중 오류가 발생했습니다."
+        )
+
+
+@router.post("/diary/explore/follow-up", response_model=DiaryExplorationResponse)
+async def generate_follow_up_question(
+    request: DiaryFollowUpRequest,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    exploration_service=Depends(get_api_diary_exploration_service),
+    rate_limit=Depends(diary_rate_limiter)
+):
+    """이전 답변을 바탕으로 후속 질문 생성"""
+    try:
+        logger.info(f"사용자 {current_user['user_id']} 후속 질문 생성 요청")
+        
+        # 후속 질문 생성
+        result = await exploration_service.generate_follow_up_question(
+            diary_text=request.diary_text,
+            previous_question=request.previous_question,
+            user_response=request.user_response,
+            emotion_keywords=request.emotion_keywords
+        )
+        
+        if not result.get("success", False):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"후속 질문 생성 실패: {result.get('error', 'Unknown error')}"
+            )
+        
+        # 응답 형식에 맞게 변환
+        questions = []
+        for q in result.get("questions", []):
+            questions.append(ExplorationQuestion(
+                question=q.get("question", ""),
+                category=q.get("category", "general"),
+                explanation=q.get("explanation", "")
+            ))
+        
+        # 감정 분석 데이터가 있으면 변환
+        emotion_analysis = None
+        if "emotion_analysis" in result:
+            ea = result["emotion_analysis"]
+            emotion_analysis = EmotionAnalysis(
+                keywords=ea.get("keywords", []),
+                vad_scores=ea.get("vad_scores", [0.5, 0.5, 0.5]),
+                primary_emotion=ea.get("primary_emotion", "neutral"),
+                intensity=ea.get("confidence", 0.5)
+            )
+        
+        return DiaryExplorationResponse(
+            success=True,
+            questions=questions,
+            exploration_theme=result.get("exploration_theme", "Continued Exploration"),
+            encouragement=result.get("encouragement", "Thank you for sharing. Let's continue exploring."),
+            emotion_analysis=emotion_analysis,
+            generation_timestamp=result.get("generation_timestamp")
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"후속 질문 생성 중 오류 발생: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="후속 질문 생성 중 오류가 발생했습니다."
+        )
+
+
+@router.get("/diary/explore/categories")
+async def get_exploration_categories(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    exploration_service=Depends(get_api_diary_exploration_service)
+):
+    """질문 카테고리 정보 조회"""
+    try:
+        result = await exploration_service.get_question_categories()
+        return result
+    except Exception as e:
+        logger.error(f"질문 카테고리 조회 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="질문 카테고리 조회에 실패했습니다."
+        )
+
+
+@router.get("/diary/explore/safety")
+async def get_safety_guidelines(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    exploration_service=Depends(get_api_diary_exploration_service)
+):
+    """안전 가이드라인 조회"""
+    try:
+        result = await exploration_service.get_safety_guidelines()
+        return result
+    except Exception as e:
+        logger.error(f"안전 가이드라인 조회 실패: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="안전 가이드라인 조회에 실패했습니다."
         )
 
 
