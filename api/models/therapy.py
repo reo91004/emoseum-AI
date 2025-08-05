@@ -32,9 +32,8 @@ class GeneratedImage(BaseModel):
     generation_metadata: ImageGenerationMetadata
 
 
-class GuestbookEntry(BaseModel):
+class ArtworkTitle(BaseModel):
     title: str
-    tags: List[str]
     reflection: str
 
 
@@ -66,9 +65,8 @@ class DiaryFollowUpRequest(BaseModel):
     emotion_keywords: Optional[List[str]] = Field(None, description="감정 키워드 (선택사항)")
 
 
-class GuestbookRequest(BaseModel):
+class ArtworkTitleRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=100)
-    tags: List[str] = Field(..., min_items=1, max_items=5)
     reflection: Optional[str] = Field(None, max_length=500)
 
 
@@ -95,9 +93,9 @@ class ImageGenerationResponse(BaseModel):
     next_stage: JourneyStage
 
 
-class GuestbookResponse(BaseModel):
+class ArtworkTitleResponse(BaseModel):
     session_id: str
-    guestbook_entry: GuestbookEntry
+    artwork_title: ArtworkTitle
     next_stage: JourneyStage
 
 
@@ -131,5 +129,5 @@ class TherapySessionDetailResponse(BaseModel):
     diary_text: Optional[str] = None
     emotion_analysis: Optional[EmotionAnalysis] = None
     generated_image: Optional[GeneratedImage] = None
-    guestbook_entry: Optional[GuestbookEntry] = None
+    artwork_title: Optional[ArtworkTitle] = None
     docent_message: Optional[DocentMessage] = None

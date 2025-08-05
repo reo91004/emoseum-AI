@@ -316,9 +316,9 @@ class EmoseumCLI:
             if input("\n감정을 더 깊이 탐색해보시겠습니까? (y/n): ").lower() == "y":
                 self._explore_diary_emotions(diary_text)
             
-            # Step 3: Defusion (방명록)
-            if input("\n방명록을 작성하시겠습니까? (y/n): ").lower() == "y":
-                self._write_guestbook()
+            # Step 3: Defusion (작품 제목)
+            if input("\n생성된 작품에 제목을 지어주시겠습니까? (y/n): ").lower() == "y":
+                self._write_artwork_title()
 
         except Exception as e:
             logger.error(f"감정 여정 처리 실패: {e}")
@@ -441,32 +441,27 @@ class EmoseumCLI:
             logger.error(f"다음 질문 생성 실패: {e}")
             return None
 
-    def _write_guestbook(self):
-        """방명록 작성"""
+    def _write_artwork_title(self):
+        """작품 제목 작성"""
         if not self.current_journey:
             print("진행 중인 여정이 없습니다.")
             return
 
-        print("\n=== 방명록 작성 ===")
-        print("생성된 이미지를 보고 떠오르는 제목을 지어주세요.")
+        print("\n=== 작품 제목 작성 ===")
+        print("생성된 작품을 보고 떠오르는 제목을 지어주세요.")
 
         title = input("제목: ").strip()
         if not title:
             print("제목을 입력해주세요.")
             return
 
-        print("\n이미지와 관련된 태그를 입력해주세요 (쉼표로 구분)")
-        tags_input = input("태그: ").strip()
-        tags = [tag.strip() for tag in tags_input.split(",") if tag.strip()]
-
         try:
-            result = self.therapy_system.complete_guestbook(
-                self.current_user, self.current_journey, title, tags
+            result = self.therapy_system.complete_artwork_title(
+                self.current_user, self.current_journey, title
             )
 
-            print("\n=== 방명록 작성 완료 ===")
-            print(f"제목: {result['guestbook']['title']}")
-            print(f"태그: {', '.join(result['guestbook']['tags'])}")
+            print("\n=== 작품 제목 작성 완료 ===")
+            print(f"제목: {result['artwork_title']['title']}")
             print(f"\n{result['guided_question']}")
 
             # Step 4: Closure (도슨트 메시지)
@@ -474,7 +469,7 @@ class EmoseumCLI:
                 self._create_docent_message()
 
         except Exception as e:
-            logger.error(f"방명록 작성 실패: {e}")
+            logger.error(f"작품 제목 작성 실패: {e}")
             print(f"처리 중 오류가 발생했습니다: {e}")
 
     def _create_docent_message(self):
@@ -559,7 +554,7 @@ class EmoseumCLI:
 
                 # 다음 단계 한글 변환
                 step_names = {
-                    "guestbook": "방명록 작성",
+                    "guestbook": "작품 제목 작성",
                     "docent_message": "도슨트 메시지",
                     "completed": "완료",
                 }
@@ -574,7 +569,7 @@ class EmoseumCLI:
                 if status["reflection"]:
                     progress.append("✓ 이미지 생성")
                 if status["guestbook"]:
-                    progress.append("✓ 방명록")
+                    progress.append("✓ 작품 제목")
                 if status["docent_message"]:
                     progress.append("✓ 도슨트 메시지")
 
@@ -626,12 +621,11 @@ class EmoseumCLI:
             print(
                 f"\n🖼️ 이미지가 이미 생성되어 있습니다: {journey_item.reflection_image_path}"
             )
-            if input("\n방명록을 작성하시겠습니까? (y/n): ").lower() == "y":
-                self._write_guestbook()
+            if input("\n작품 제목을 작성하시겠습니까? (y/n): ").lower() == "y":
+                self._write_artwork_title()
         elif next_step == "docent_message":
-            print(f"\n✅ 방명록이 이미 작성되어 있습니다:")
+            print(f"\n✅ 작품 제목이 이미 작성되어 있습니다:")
             print(f"   제목: {journey_item.guestbook_title}")
-            print(f"   태그: {', '.join(journey_item.guestbook_tags)}")
             if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
                 self._create_docent_message()
         else:

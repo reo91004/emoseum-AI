@@ -457,48 +457,45 @@ class ACTTherapySystem:
 
 
 
-    def complete_guestbook(
+    def complete_artwork_title(
         self,
         user_id: str,
         gallery_item_id: str,
-        guestbook_title: str,
-        guestbook_tags: List[str],
+        artwork_title: str,
     ) -> Dict[str, Any]:
-        """ACT 3단계: Defusion (방명록 작성)"""
+        """ACT 3단계: Defusion (작품 제목 작성)"""
 
-        logger.info(f"사용자 {user_id} 방명록 작성: 아이템 {gallery_item_id}")
+        logger.info(f"사용자 {user_id} 작품 제목 작성: 아이템 {gallery_item_id}")
 
         gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
         if not gallery_item or gallery_item.user_id != user_id:
             raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
 
         guided_question = self.prompt_architect.create_guided_question(
-            guestbook_title, gallery_item.emotion_keywords, user_id
+            artwork_title, gallery_item.emotion_keywords, user_id
         )
 
-        success = self.gallery_manager.complete_guestbook(
-            gallery_item_id, guestbook_title, guestbook_tags, guided_question
+        success = self.gallery_manager.complete_artwork_title(
+            gallery_item_id, artwork_title, guided_question
         )
 
         if not success:
-            raise RuntimeError("방명록 저장에 실패했습니다.")
+            raise RuntimeError("작품 제목 저장에 실패했습니다.")
 
         personalization_updates = (
-            self.personalization_manager.update_preferences_from_guestbook(
+            self.personalization_manager.update_preferences_from_artwork_title(
                 user_id=user_id,
-                guestbook_title=guestbook_title,
-                guestbook_tags=guestbook_tags,
+                artwork_title=artwork_title,
                 image_prompt=gallery_item.reflection_prompt,
             )
         )
 
-        guestbook_result = {
+        artwork_title_result = {
             "user_id": user_id,
             "gallery_item_id": gallery_item_id,
             "step": "defusion_complete",
-            "guestbook": {
-                "title": guestbook_title,
-                "tags": guestbook_tags,
+            "artwork_title": {
+                "title": artwork_title,
                 "guided_question": guided_question,
             },
             "personalization_updates": personalization_updates,
@@ -507,8 +504,8 @@ class ACTTherapySystem:
             "gpt_docent_ready": True,
         }
 
-        logger.info(f"방명록 작성 완료: {guestbook_title}")
-        return guestbook_result
+        logger.info(f"작품 제목 작성 완료: {artwork_title}")
+        return artwork_title_result
 
     def create_docent_message(
         self, user_id: str, gallery_item_id: str
