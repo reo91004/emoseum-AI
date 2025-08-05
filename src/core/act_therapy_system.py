@@ -292,7 +292,7 @@ class ACTTherapySystem:
                     "generation_time": reflection_result["generation_time"],
                     "generation_method": "gpt",
                 },
-                "next_step": "guestbook",
+                "next_step": "artwork_title",
                 "guided_message": "생성된 이미지를 보며 떠오르는 감정이나 생각을 자유롭게 표현해보세요.",
                 "gpt_metadata": {
                     "prompt_tokens": reflection_result.get("prompt_tokens", 0),
@@ -457,48 +457,45 @@ class ACTTherapySystem:
 
 
 
-    def complete_guestbook(
+    def complete_artwork_title(
         self,
         user_id: str,
         gallery_item_id: str,
-        guestbook_title: str,
-        guestbook_tags: List[str],
+        artwork_title: str,
     ) -> Dict[str, Any]:
-        """ACT 3단계: Defusion (방명록 작성)"""
+        """ACT 3단계: Defusion (작품 제목 작성)"""
 
-        logger.info(f"사용자 {user_id} 방명록 작성: 아이템 {gallery_item_id}")
+        logger.info(f"사용자 {user_id} 작품 제목 작성: 아이템 {gallery_item_id}")
 
         gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
         if not gallery_item or gallery_item.user_id != user_id:
             raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
 
         guided_question = self.prompt_architect.create_guided_question(
-            guestbook_title, gallery_item.emotion_keywords, user_id
+            artwork_title, gallery_item.emotion_keywords, user_id
         )
 
-        success = self.gallery_manager.complete_guestbook(
-            gallery_item_id, guestbook_title, guestbook_tags, guided_question
+        success = self.gallery_manager.complete_artwork_title(
+            gallery_item_id, artwork_title, guided_question
         )
 
         if not success:
-            raise RuntimeError("방명록 저장에 실패했습니다.")
+            raise RuntimeError("작품 제목 저장에 실패했습니다.")
 
         personalization_updates = (
-            self.personalization_manager.update_preferences_from_guestbook(
+            self.personalization_manager.update_preferences_from_artwork_title(
                 user_id=user_id,
-                guestbook_title=guestbook_title,
-                guestbook_tags=guestbook_tags,
+                artwork_title=artwork_title,
                 image_prompt=gallery_item.reflection_prompt,
             )
         )
 
-        guestbook_result = {
+        artwork_title_result = {
             "user_id": user_id,
             "gallery_item_id": gallery_item_id,
             "step": "defusion_complete",
-            "guestbook": {
-                "title": guestbook_title,
-                "tags": guestbook_tags,
+            "artwork_title": {
+                "title": artwork_title,
                 "guided_question": guided_question,
             },
             "personalization_updates": personalization_updates,
@@ -507,8 +504,8 @@ class ACTTherapySystem:
             "gpt_docent_ready": True,
         }
 
-        logger.info(f"방명록 작성 완료: {guestbook_title}")
-        return guestbook_result
+        logger.info(f"작품 제목 작성 완료: {artwork_title}")
+        return artwork_title_result
 
     def create_docent_message(
         self, user_id: str, gallery_item_id: str
@@ -684,9 +681,8 @@ class ACTTherapySystem:
                     user_id=user_id,
                     reaction_type=reaction_type,
                     docent_message=gallery_item.docent_message,
-                    guestbook_data={
-                        "title": gallery_item.guestbook_title,
-                        "tags": gallery_item.guestbook_tags,
+                    artwork_title_data={
+                        "title": gallery_item.artwork_title,
                     },
                 )
             )
@@ -832,7 +828,7 @@ class ACTTherapySystem:
             complete_journeys = [
                 item.to_dict()
                 for item in gallery_items
-                if item.guestbook_title and item.docent_message
+                if item.artwork_title and item.docent_message
             ]
 
             results = {}
@@ -885,7 +881,7 @@ class ACTTherapySystem:
         complete_journeys = [
             item
             for item in gallery_items
-            if item.guestbook_title and item.docent_message
+            if item.artwork_title and item.docent_message
         ]
 
         from ..training.lora_trainer import PersonalizedLoRATrainer

@@ -233,7 +233,7 @@ class GPTService:
 
     def generate_transition_guidance(
         self,
-        guestbook_title: str,
+        artwork_title: str,
         emotion_keywords: List[str],
         user_id: str = "anonymous",
         **kwargs,
@@ -248,7 +248,7 @@ class GPTService:
             "transition_guidance"
         ]
         user_message = user_template.format(
-            guestbook_title=guestbook_title,
+            artwork_title=artwork_title,
             emotion_keywords=", ".join(emotion_keywords),
         )
 
@@ -525,8 +525,7 @@ Tone: {docent_data[coping_style].get('tone', 'balanced')}"""
             interaction_history=user_profile.get("interaction_history", "New user"),
             diary_text=gallery_item.get("diary_text", ""),
             emotion_keywords=gallery_item.get("emotion_keywords", []),
-            guestbook_title=gallery_item.get("guestbook_title", ""),
-            guestbook_tags=gallery_item.get("guestbook_tags", []),
+            artwork_title=gallery_item.get("artwork_title", ""),
         )
 
     def _structure_docent_message(
@@ -560,7 +559,7 @@ Tone: {docent_data[coping_style].get('tone', 'balanced')}"""
         result = {
             "full_message": raw_content,
             "user_id": user_profile.get("user_id", "anonymous"),
-            "guestbook_title": gallery_item.get("guestbook_title", ""),
+            "artwork_title": gallery_item.get("artwork_title", ""),
             "emotion_keywords": gallery_item.get("emotion_keywords", []),
         }
         

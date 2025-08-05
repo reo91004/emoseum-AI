@@ -48,9 +48,9 @@ dist/
 
 # Jupyter
 .ipynb_checkpoints/
-*.ipynb
 
 # 임시 파일
 tmp/
 temp/
 *.tmp
+prompt_test

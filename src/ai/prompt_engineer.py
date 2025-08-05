@@ -311,18 +311,18 @@ class PromptEngineer:
 
     def generate_transition_guidance(
         self,
-        guestbook_title: str,
+        artwork_title: str,
         emotion_keywords: List[str],
         user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """도슨트 전환 안내 질문 생성"""
 
         try:
-            logger.info(f"도슨트 전환 안내 질문 생성 시작: {guestbook_title}")
+            logger.info(f"도슨트 전환 안내 질문 생성 시작: {artwork_title}")
 
             # GPT 서비스를 통해 전환 안내 질문 생성
             gpt_response = self.gpt_service.generate_transition_guidance(
-                guestbook_title=guestbook_title,
+                artwork_title=artwork_title,
                 emotion_keywords=emotion_keywords,
                 user_id=user_id,
                 max_tokens=150,
@@ -341,7 +341,7 @@ class PromptEngineer:
                 "success": True,
                 "content": gpt_response.get("content", ""),
                 "metadata": {
-                    "guestbook_title": guestbook_title,
+                    "artwork_title": artwork_title,
                     "emotion_keywords": emotion_keywords,
                     "generation_method": "gpt_based",
                     "gpt_model": gpt_response.get("model", "unknown"),
@@ -349,7 +349,7 @@ class PromptEngineer:
                 },
             }
 
-            logger.info(f"도슨트 전환 안내 질문 생성 완료: {guestbook_title}")
+            logger.info(f"도슨트 전환 안내 질문 생성 완료: {artwork_title}")
             return result
 
         except Exception as e:

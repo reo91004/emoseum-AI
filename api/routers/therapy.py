@@ -26,8 +26,8 @@ from ..models.therapy import (
     DiaryEntryRequest,
     DiaryAnalysisResponse,
     ImageGenerationResponse,
-    GuestbookRequest,
-    GuestbookResponse,
+    ArtworkTitleRequest,
+    ArtworkTitleResponse,
     DocentMessageResponse,
     TherapySessionDetailResponse,
     DiaryExplorationRequest,
@@ -38,7 +38,7 @@ from ..models.therapy import (
     EmotionAnalysis,
     GeneratedImage,
     ImageGenerationMetadata,
-    GuestbookEntry,
+    ArtworkTitle,
     DocentMessage,
 )
 
@@ -209,38 +209,36 @@ async def generate_reflection_image(
         )
 
 
-@router.post("/sessions/{session_id}/guestbook", response_model=GuestbookResponse)
-async def create_guestbook_entry(
+@router.post("/sessions/{session_id}/artwork-title", response_model=ArtworkTitleResponse)
+async def create_artwork_title(
     session_id: str,
-    guestbook: GuestbookRequest,
+    artwork_title: ArtworkTitleRequest,
     current_user: Dict[str, Any] = Depends(get_current_user),
     act_system=Depends(get_act_therapy_system),
 ):
-    """방명록 작성 (3단계: Defusion)"""
+    """작품 제목 작성 (3단계: Defusion)"""
     try:
         # session_id is actually gallery_item_id
         gallery_item_id = session_id
 
-        # ACT 시스템을 통한 방명록 완성
-        result = act_system.complete_guestbook(
+        # ACT 시스템을 통한 작품 제목 완성
+        result = act_system.complete_artwork_title(
             user_id=current_user["user_id"],
             gallery_item_id=gallery_item_id,
-            guestbook_title=guestbook.title,
-            guestbook_tags=guestbook.tags,
+            artwork_title=artwork_title.title,
         )
 
         if not result:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create guestbook entry",
+                detail="Failed to create artwork title",
             )
 
-        return GuestbookResponse(
+        return ArtworkTitleResponse(
             session_id=session_id,
-            guestbook_entry=GuestbookEntry(
-                title=guestbook.title,
-                tags=guestbook.tags,
-                reflection=guestbook.reflection or "",
+            artwork_title=ArtworkTitle(
+                title=artwork_title.title,
+                reflection=artwork_title.reflection or "",
             ),
             next_stage=JourneyStage.CLOSURE,
         )
@@ -248,10 +246,10 @@ async def create_guestbook_entry(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating guestbook entry: {e}")
+        logger.error(f"Error creating artwork title: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create guestbook entry",
+            detail="Failed to create artwork title",
         )
 
 
@@ -499,13 +497,13 @@ async def get_session_details(
         completion_status = gallery_item.get_completion_status()
         logger.info(f"Completion status for {session_id}: {completion_status}")
         logger.info(
-            f"Gallery item data: reflection_path={gallery_item.reflection_image_path}, guestbook_title={gallery_item.guestbook_title}, docent_message={gallery_item.docent_message}"
+            f"Gallery item data: reflection_path={gallery_item.reflection_image_path}, artwork_title={gallery_item.artwork_title}, docent_message={gallery_item.docent_message}"
         )
 
         if completion_status["docent_message"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = True
-        elif completion_status["guestbook"]:
+        elif completion_status["artwork_title"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = False
         elif completion_status["reflection"]:
@@ -554,13 +552,12 @@ async def get_session_details(
                 if gallery_item.reflection_image_path
                 else None
             ),
-            guestbook_entry=(
-                GuestbookEntry(
-                    title=gallery_item.guestbook_title,
-                    tags=gallery_item.guestbook_tags,
+            artwork_title=(
+                ArtworkTitle(
+                    title=gallery_item.artwork_title,
                     reflection="",
                 )
-                if gallery_item.guestbook_title
+                if gallery_item.artwork_title
                 else None
             ),
             docent_message=(

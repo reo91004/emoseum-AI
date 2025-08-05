@@ -354,9 +354,9 @@ class SafetyValidator:
             issues.append("Response doesn't acknowledge user's specific emotions")
 
         # 개인화 수준 검사
-        guestbook_data = context.get("guestbook_data", {})
-        if guestbook_data.get("title") and not self._references_user_content(
-            response, guestbook_data
+        artwork_title_data = context.get("artwork_title_data", {})
+        if artwork_title_data.get("title") and not self._references_user_content(
+            response, artwork_title_data
         ):
             issues.append(
                 "Response lacks personalization despite available user content"
@@ -433,20 +433,18 @@ class SafetyValidator:
         return direct_mentions > 0 or indirect_acknowledgment
 
     def _references_user_content(
-        self, response: str, guestbook_data: Dict[str, Any]
+        self, response: str, artwork_title_data: Dict[str, Any]
     ) -> bool:
         """응답이 사용자 콘텐츠를 참조하는지 확인"""
 
         response_lower = response.lower()
 
-        # 방명록 제목 참조 확인
-        title = guestbook_data.get("title", "")
+        # 작품 제목 참조 확인
+        title = artwork_title_data.get("title", "")
         if title and title.lower() in response_lower:
             return True
 
-        # 태그 참조 확인
-        tags = guestbook_data.get("tags", [])
-        if tags and any(tag.lower() in response_lower for tag in tags):
+        # 태그 기능 제거됨
             return True
 
         # 일반적인 개인화 표현 확인
