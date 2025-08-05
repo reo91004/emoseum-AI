@@ -459,7 +459,6 @@ class EmoseumCLI:
 
             print("\n=== 작품 제목 작성 완료 ===")
             print(f"제목: {result['artwork_title']['title']}")
-            print(f"\n{result['guided_question']}")
 
             # Step 4: Closure (도슨트 메시지)
             if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":

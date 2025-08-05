@@ -471,12 +471,8 @@ class ACTTherapySystem:
         if not gallery_item or gallery_item.user_id != user_id:
             raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
 
-        guided_question = self.prompt_architect.create_guided_question(
-            artwork_title, gallery_item.emotion_keywords, user_id
-        )
-
         success = self.gallery_manager.complete_artwork_title(
-            gallery_item_id, artwork_title, guided_question
+            gallery_item_id, artwork_title, ""
         )
 
         if not success:
@@ -496,11 +492,9 @@ class ACTTherapySystem:
             "step": "defusion_complete",
             "artwork_title": {
                 "title": artwork_title,
-                "guided_question": guided_question,
             },
             "personalization_updates": personalization_updates,
             "next_step": "docent_message",
-            "guided_question": guided_question,
             "gpt_docent_ready": True,
         }
 

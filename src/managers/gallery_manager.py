@@ -35,7 +35,6 @@ class GalleryItem:
         artwork_title: str = "",
         docent_message: Dict[str, Any] = None,
         message_reactions: List[str] = None,
-        guided_question: str = "",
         created_date: str = "",
         coping_style: str = "balanced",
         # GPT 관련 새 필드들
@@ -58,7 +57,6 @@ class GalleryItem:
         self.artwork_title = artwork_title
         self.docent_message = docent_message or {}
         self.message_reactions = message_reactions or []
-        self.guided_question = guided_question
         self.created_date = created_date or datetime.now().isoformat()
         self.coping_style = coping_style
 
@@ -84,7 +82,6 @@ class GalleryItem:
             "artwork_title": self.artwork_title,
             "docent_message": self.docent_message,
             "message_reactions": self.message_reactions,
-            "guided_question": self.guided_question,
             "created_date": self.created_date,
             "coping_style": self.coping_style,
             # GPT 메타데이터
@@ -241,7 +238,6 @@ class GalleryManager:
             "artwork_title": "",
             "docent_message": {},
             "message_reactions": [],
-            "guided_question": "",
             "created_date": now.isoformat(),
             "coping_style": coping_style,
             # GPT 메타데이터
@@ -269,7 +265,7 @@ class GalleryManager:
         self,
         item_id: str,
         artwork_title: str,
-        guided_question: str,
+        guided_question: str = "",  # 하위 호환성을 위해 기본값 유지
     ) -> bool:
         """작품 제목 작성 완료 (ACT 3단계 완료)"""
 
@@ -279,7 +275,6 @@ class GalleryManager:
                 {
                     "$set": {
                         "artwork_title": artwork_title,
-                        "guided_question": guided_question,
                     }
                 },
             )
@@ -435,7 +430,6 @@ class GalleryManager:
             artwork_title=doc.get("artwork_title", ""),
             docent_message=doc.get("docent_message", {}),
             message_reactions=doc.get("message_reactions", []),
-            guided_question=doc.get("guided_question", ""),
             created_date=doc.get("created_date", ""),
             coping_style=doc.get("coping_style", "balanced"),
             # GPT 메타데이터
