@@ -16,8 +16,18 @@ logger = logging.getLogger(__name__)
 class APIDiaryExplorationService:
     """API용 일기 심화 탐색 서비스 래퍼"""
     
-    def __init__(self):
-        self.core_service = DiaryExplorationService()
+    def __init__(self, gpt_service=None):
+        # GPT 서비스가 없으면 ACT 시스템에서 가져오기
+        if gpt_service is None:
+            try:
+                from src.core.act_therapy_system import ACTTherapySystem
+                act_system = ACTTherapySystem()
+                gpt_service = act_system.gpt_service
+            except Exception as e:
+                logger.error(f"GPT 서비스를 가져올 수 없음: {e}")
+                gpt_service = None
+        
+        self.core_service = DiaryExplorationService(gpt_service=gpt_service)
         logger.info("API 일기 심화 탐색 서비스 초기화 완료")
     
     async def generate_exploration_questions(
@@ -181,6 +191,14 @@ def get_api_diary_exploration_service() -> APIDiaryExplorationService:
     global _api_diary_exploration_service
     
     if _api_diary_exploration_service is None:
-        _api_diary_exploration_service = APIDiaryExplorationService()
+        # dependencies에서 ACT 시스템 가져오기
+        try:
+            from ..dependencies import get_act_therapy_system
+            act_system = get_act_therapy_system()
+            gpt_service = act_system.gpt_service
+            _api_diary_exploration_service = APIDiaryExplorationService(gpt_service=gpt_service)
+        except Exception as e:
+            logger.error(f"ACT 시스템에서 GPT 서비스를 가져올 수 없음: {e}")
+            _api_diary_exploration_service = APIDiaryExplorationService()
     
     return _api_diary_exploration_service

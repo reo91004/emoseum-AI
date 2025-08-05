@@ -55,7 +55,7 @@ class PromptEngineer:
             if "prompt_engineering" in yaml_data:
                 prompt_data = yaml_data["prompt_engineering"]
                 self.system_messages = {}
-                for style in ["avoidant", "confrontational", "balanced"]:
+                for style in ["avoidance_oriented", "task_oriented", "balanced"]:
                     if style in prompt_data and "system_message" in prompt_data[style]:
                         self.system_messages[style] = prompt_data[style][
                             "system_message"
@@ -400,6 +400,6 @@ class PromptEngineer:
             "hardcoded_templates": False,
             "gpt_integration": "complete",
             "safety_validation_enabled": True,
-            "coping_style_support": ["avoidant", "confrontational", "balanced"],
+            "coping_style_support": ["avoidance_oriented", "task_oriented", "balanced"],
             "handover_status": "completed",
         }

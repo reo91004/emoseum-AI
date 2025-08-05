@@ -370,7 +370,7 @@ class SafetyValidator:
         response_lower = response.lower()
 
         style_indicators = {
-            "avoidant": [
+            "avoidance_oriented": [
                 "gentle",
                 "soft",
                 "gradually",
@@ -378,7 +378,7 @@ class SafetyValidator:
                 "carefully",
                 "tenderly",
             ],
-            "confrontational": [
+            "task_oriented": [
                 "direct",
                 "honest",
                 "authentic",

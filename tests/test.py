@@ -6,6 +6,13 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any
 
+try:
+    from bson import ObjectId
+    BSON_AVAILABLE = True
+except ImportError:
+    BSON_AVAILABLE = False
+    ObjectId = None
+
 
 class EmoSeumAPITester:
     def __init__(self, base_url: str = "http://localhost:8000"):
@@ -124,7 +131,7 @@ class EmoSeumAPITester:
         # 2. 일기 작성
         diary_data = {
             "diary_text": "Today I felt really depressed. I wasn't in a good mood from the morning, and work didn't go well either.",
-            "diary_id": f"test_diary_{uuid.uuid4().hex[:8]}"
+            "diary_id": str(ObjectId()) if BSON_AVAILABLE else f"test_diary_{uuid.uuid4().hex[:24]}"
         }
         response = requests.post(
             f"{self.base_url}/therapy/sessions/{self.session_id}/diary",

@@ -942,8 +942,8 @@ class ACTTherapySystem:
         """심리검사 결과 해석"""
         interpretations = {
             "coping_style_description": {
-                "avoidant": "감정적 상황을 회피하거나 우회하는 경향이 있습니다.",
-                "confrontational": "감정적 상황에 직면하고 적극적으로 대처하는 경향이 있습니다.",
+                "avoidance_oriented": "감정적 상황을 회피하거나 우회하는 경향이 있습니다.",
+                "task_oriented": "감정적 상황에 직면하고 적극적으로 대처하는 경향이 있습니다.",
                 "balanced": "상황에 따라 유연하게 대처하는 균형잡힌 스타일을 보입니다.",
             }[result.coping_style],
             "severity_description": {
@@ -961,7 +961,7 @@ class ACTTherapySystem:
         """심리검사 기반 권장사항"""
         recommendations = []
 
-        if result.coping_style == "avoidant":
+        if result.coping_style == "avoidance_oriented":
             recommendations.extend(
                 [
                     "부드럽고 은유적인 감정 표현을 통해 점진적으로 감정에 다가가보세요.",
@@ -969,7 +969,7 @@ class ACTTherapySystem:
                     "감정을 안전한 거리에서 관찰하고 수용하는 연습을 해보세요.",
                 ]
             )
-        elif result.coping_style == "confrontational":
+        elif result.coping_style == "task_oriented":
             recommendations.extend(
                 [
                     "감정을 직접적이고 명확하게 표현하는 것이 도움이 될 것 같습니다.",

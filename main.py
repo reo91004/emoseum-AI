@@ -351,11 +351,8 @@ class EmoseumCLI:
             category = first_question.get("category", "general")
             explanation = first_question.get("explanation", "")
             
-            print(f"\n{result.get('exploration_theme', 'Emotional Exploration')}")
-            print("=" * 50)
+            print(f"\n=== 감정 심화 탐색 ===")
             print(f"\n질문: {question_text}")
-            print(f"[{category}] {explanation}")
-            print(f"\n💡 {result.get('encouragement', 'Take your time exploring your emotions.')}")
             
             # 단계적 탐색 시작
             current_question = question_text
