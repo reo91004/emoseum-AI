@@ -21,6 +21,7 @@ from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
 from ..services.image_service_wrapper import ColabImageGenerator, ExternalImageGenerator
 from ..services.emotion_analyzer import get_emotion_analyzer
+from ..services.diary_exploration_service import get_diary_exploration_service
 from ..managers.gallery_manager import GalleryManager, GalleryItem
 from ..therapy.docent_message import DocentMessageSystem
 
@@ -69,6 +70,9 @@ class ACTTherapySystem:
 
         # GPT 서비스들 주입
         self._inject_gpt_services()
+        
+        # 일기 심화 탐색 서비스 초기화 (GPT 서비스 주입 후)
+        self.diary_exploration_service = get_diary_exploration_service(gpt_service=self.gpt_service)
 
         logger.info("ACT 치료 시스템 초기화 완료")
 
@@ -559,6 +563,97 @@ class ACTTherapySystem:
         except Exception as e:
             logger.error(f"도슨트 메시지 생성 실패: {e}")
             raise
+
+    def generate_diary_exploration_questions(
+        self, user_id: str, diary_text: str
+    ) -> Dict[str, Any]:
+        """일기 심화 탐색 질문 생성"""
+        
+        logger.info(f"사용자 {user_id} 일기 심화 탐색 질문 생성")
+        
+        try:
+            # 먼저 감정 분석 수행
+            emotion_analysis = self._analyze_emotion_with_gpt(diary_text, user_id)
+            emotion_keywords = emotion_analysis.get("keywords", [])
+            
+            # 일기 심화 탐색 서비스를 통해 질문 생성
+            exploration_result = self.diary_exploration_service.generate_exploration_questions(
+                diary_text=diary_text,
+                emotion_keywords=emotion_keywords
+            )
+            
+            # 결과에 사용자 정보와 감정 분석 결과 추가
+            exploration_result.update({
+                "user_id": user_id,
+                "emotion_analysis": emotion_analysis,
+                "diary_text_length": len(diary_text),
+                "generation_timestamp": datetime.now().isoformat()
+            })
+            
+            logger.info(f"일기 심화 탐색 질문 생성 완료: {len(exploration_result.get('questions', []))}개 질문")
+            return exploration_result
+            
+        except Exception as e:
+            logger.error(f"일기 심화 탐색 질문 생성 실패: {e}")
+            # 실패 시 기본 응답 반환
+            return {
+                "success": False,
+                "user_id": user_id,
+                "questions": [],
+                "exploration_theme": "Exploration Error",
+                "encouragement": "Please try again in a moment.",
+                "error": str(e)
+            }
+
+    def generate_follow_up_exploration_question(
+        self, 
+        user_id: str, 
+        diary_text: str, 
+        previous_question: str,
+        user_response: str
+    ) -> Dict[str, Any]:
+        """이전 답변을 바탕으로 후속 일기 심화 탐색 질문 생성"""
+        
+        logger.info(f"사용자 {user_id} 후속 일기 심화 탐색 질문 생성")
+        
+        try:
+            # 먼저 감정 분석 수행 (기존 데이터 활용 또는 새로 분석)
+            emotion_analysis = self._analyze_emotion_with_gpt(diary_text, user_id)
+            emotion_keywords = emotion_analysis.get("keywords", [])
+            
+            # 후속 질문 생성
+            exploration_result = self.diary_exploration_service.generate_follow_up_question(
+                diary_text=diary_text,
+                previous_question=previous_question,
+                user_response=user_response,
+                emotion_keywords=emotion_keywords
+            )
+            
+            # 결과에 사용자 정보와 메타데이터 추가
+            exploration_result.update({
+                "user_id": user_id,
+                "emotion_analysis": emotion_analysis,
+                "previous_question": previous_question,
+                "user_response_length": len(user_response),
+                "generation_timestamp": datetime.now().isoformat(),
+                "is_follow_up": True
+            })
+            
+            logger.info(f"후속 일기 심화 탐색 질문 생성 완료: {len(exploration_result.get('questions', []))}개 질문")
+            return exploration_result
+            
+        except Exception as e:
+            logger.error(f"후속 일기 심화 탐색 질문 생성 실패: {e}")
+            # 실패 시 기본 응답 반환
+            return {
+                "success": False,
+                "user_id": user_id,
+                "questions": [],
+                "exploration_theme": "Follow-up Error",
+                "encouragement": "Thank you for sharing. Please try again in a moment.",
+                "error": str(e),
+                "is_follow_up": True
+            }
 
     def record_message_reaction(
         self,

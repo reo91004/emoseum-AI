@@ -312,6 +312,10 @@ class EmoseumCLI:
             )
             print(f"\n{result['guided_message']}")
 
+            # 일기 심화 탐색 옵션 제공
+            if input("\n감정을 더 깊이 탐색해보시겠습니까? (y/n): ").lower() == "y":
+                self._explore_diary_emotions(diary_text)
+            
             # Step 3: Defusion (방명록)
             if input("\n방명록을 작성하시겠습니까? (y/n): ").lower() == "y":
                 self._write_guestbook()
@@ -319,6 +323,123 @@ class EmoseumCLI:
         except Exception as e:
             logger.error(f"감정 여정 처리 실패: {e}")
             print(f"처리 중 오류가 발생했습니다: {e}")
+
+    def _explore_diary_emotions(self, diary_text: str):
+        """일기 심화 탐색 (단계적 접근)"""
+        print("\n=== 감정 심화 탐색 ===")
+        print("현재 일기를 더 깊이 이해하기 위한 질문을 생성하고 있습니다...")
+        
+        try:
+            # 첫 번째 질문 생성
+            result = self.therapy_system.generate_diary_exploration_questions(
+                user_id=self.current_user,
+                diary_text=diary_text
+            )
+            
+            if not result.get("success", True):
+                print(f"질문 생성에 실패했습니다: {result.get('error', '알 수 없는 오류')}")
+                return
+            
+            questions = result.get("questions", [])
+            if not questions:
+                print("생성된 질문이 없습니다.")
+                return
+            
+            # 첫 번째 질문 표시
+            first_question = questions[0]
+            question_text = first_question.get("question", "")
+            category = first_question.get("category", "general")
+            explanation = first_question.get("explanation", "")
+            
+            print(f"\n{result.get('exploration_theme', 'Emotional Exploration')}")
+            print("=" * 50)
+            print(f"\n질문: {question_text}")
+            print(f"[{category}] {explanation}")
+            print(f"\n💡 {result.get('encouragement', 'Take your time exploring your emotions.')}")
+            
+            # 단계적 탐색 시작
+            current_question = question_text
+            step = 1
+            
+            while True:
+                print(f"\n--- 단계 {step} ---")
+                choice = input("\n답변하시겠습니까? (y: 답변, s: 스킵, q: 종료): ").strip().lower()
+                
+                if choice == 'q':
+                    print("감정 탐색을 종료합니다.")
+                    break
+                elif choice == 's':
+                    print("이 질문을 스킵합니다.")
+                    # 다음 질문 생성 (빈 답변으로 처리)
+                    next_result = self._get_next_question(diary_text, current_question, "")
+                    if next_result:
+                        current_question = next_result
+                        step += 1
+                        print(f"\n다음 질문: {current_question}")
+                        continue
+                    else:
+                        print("더 이상 질문이 없습니다.")
+                        break
+                elif choice == 'y':
+                    print(f"\n질문: {current_question}")
+                    print("(답변을 마치려면 빈 줄에서 Enter를 두 번 누르세요)")
+                    
+                    # 답변 입력
+                    answer_lines = []
+                    empty_count = 0
+                    
+                    while True:
+                        line = input()
+                        if not line:
+                            empty_count += 1
+                            if empty_count >= 2:
+                                break
+                        else:
+                            empty_count = 0
+                            answer_lines.append(line)
+                    
+                    answer = "\n".join(answer_lines).strip()
+                    if answer:
+                        print(f"\n답변이 기록되었습니다. ({len(answer)}자)")
+                        
+                        # 다음 질문 생성
+                        next_result = self._get_next_question(diary_text, current_question, answer)
+                        if next_result:
+                            current_question = next_result
+                            step += 1
+                            print(f"\n다음 질문: {current_question}")
+                        else:
+                            print("탐색이 완료되었습니다. 좋은 통찰을 얻으셨기를 바랍니다.")
+                            break
+                    else:
+                        print("\n답변이 비어있습니다. 다시 시도해주세요.")
+                else:
+                    print("유효하지 않은 선택입니다. y(답변), s(스킵), q(종료) 중 선택해주세요.")
+            
+        except Exception as e:
+            logger.error(f"일기 심화 탐색 실패: {e}")
+            print(f"심화 탐색 중 오류가 발생했습니다: {e}")
+    
+    def _get_next_question(self, diary_text: str, previous_question: str, user_response: str) -> Optional[str]:
+        """다음 질문 생성"""
+        try:
+            result = self.therapy_system.generate_follow_up_exploration_question(
+                user_id=self.current_user,
+                diary_text=diary_text,
+                previous_question=previous_question,
+                user_response=user_response
+            )
+            
+            if result.get("success", False):
+                questions = result.get("questions", [])
+                if questions:
+                    return questions[0].get("question", "")
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"다음 질문 생성 실패: {e}")
+            return None
 
     def _write_guestbook(self):
         """방명록 작성"""

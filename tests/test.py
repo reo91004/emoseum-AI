@@ -170,6 +170,182 @@ class EmoSeumAPITester:
         )
         self.print_response("세션 상세 정보 조회", response)
 
+    def test_diary_exploration_endpoints(self):
+        """일기 심화 탐색 관련 엔드포인트 테스트"""
+        headers = self.get_headers()
+
+        # 1. 일기 심화 탐색 질문 생성
+        exploration_data = {
+            "diary_text": "오늘은 정말 우울했다. 아침부터 기분이 좋지 않았고, 일도 잘 풀리지 않았다. 모든 게 다 잘못되는 것 같아서 답답하고 화가 난다.",
+            "emotion_keywords": ["우울", "화남", "답답함"]
+        }
+        response = requests.post(
+            f"{self.base_url}/therapy/diary/explore",
+            json=exploration_data,
+            headers=headers,
+        )
+        self.print_response("일기 심화 탐색 질문 생성", response)
+
+        # 2. 일기 심화 탐색 질문 생성 (감정 키워드 없이)
+        exploration_data_simple = {
+            "diary_text": "Today was a good day. I met my friends and we had a great time together."
+        }
+        response = requests.post(
+            f"{self.base_url}/therapy/diary/explore",
+            json=exploration_data_simple,
+            headers=headers,
+        )
+        self.print_response("일기 심화 탐색 질문 생성 (간단)", response)
+
+        # 3. 질문 카테고리 정보 조회
+        response = requests.get(
+            f"{self.base_url}/therapy/diary/explore/categories", headers=headers
+        )
+        self.print_response("질문 카테고리 정보 조회", response)
+
+        # 4. 안전 가이드라인 조회
+        response = requests.get(
+            f"{self.base_url}/therapy/diary/explore/safety", headers=headers
+        )
+        self.print_response("안전 가이드라인 조회", response)
+
+        # 5. 후속 질문 생성 테스트
+        follow_up_data = {
+            "diary_text": "오늘은 정말 우울했다. 아침부터 기분이 좋지 않았고, 일도 잘 풀리지 않았다.",
+            "previous_question": "Can you describe in more detail the specific situation that led to this emotion?",
+            "user_response": "I think it started when I had an argument with my colleague in the morning. It made me feel frustrated and isolated.",
+            "emotion_keywords": ["우울", "좌절", "고립감"]
+        }
+        response = requests.post(
+            f"{self.base_url}/therapy/diary/explore/follow-up",
+            json=follow_up_data,
+            headers=headers,
+        )
+        self.print_response("후속 질문 생성", response)
+
+    def test_stepwise_diary_exploration(self):
+        """단계적 일기 심화 탐색 플로우 테스트"""
+        headers = self.get_headers()
+        
+        print(f"\n{'='*50}")
+        print("단계적 일기 심화 탐색 플로우 테스트 시작")
+        print(f"{'='*50}")
+        
+        # 테스트용 일기 내용
+        diary_text = "Today I had a really difficult day at work. My manager criticized my project in front of the whole team, and I felt embarrassed and angry. I've been working on this project for weeks, and it felt like all my effort was dismissed."
+        emotion_keywords = ["embarrassed", "angry", "dismissed"]
+        
+        # 1단계: 초기 질문 생성
+        print("\n🔍 1단계: 초기 탐색 질문 생성")
+        exploration_data = {
+            "diary_text": diary_text,
+            "emotion_keywords": emotion_keywords
+        }
+        response = requests.post(
+            f"{self.base_url}/therapy/diary/explore",
+            json=exploration_data,
+            headers=headers,
+        )
+        self.print_response("1단계 - 초기 질문", response)
+        
+        if response.status_code != 200:
+            print("❌ 초기 질문 생성 실패 - 단계적 테스트 중단")
+            return
+            
+        # 첫 번째 질문 추출
+        try:
+            first_result = response.json()
+            if not first_result.get("questions"):
+                print("❌ 생성된 질문이 없음 - 단계적 테스트 중단")
+                return
+            first_question = first_result["questions"][0]["question"]
+        except Exception as e:
+            print(f"❌ 응답 파싱 실패: {e} - 단계적 테스트 중단")
+            return
+        
+        # 2단계: 첫 번째 질문에 대한 답변 시뮬레이션 및 후속 질문
+        print("\n🔍 2단계: 첫 번째 답변 후 후속 질문")
+        user_response_1 = "When my manager criticized my work in front of everyone, I felt my face getting hot and my heart racing. I wanted to defend myself but I was too shocked to speak up. It made me question whether I'm good enough for this job."
+        
+        follow_up_data_1 = {
+            "diary_text": diary_text,
+            "previous_question": first_question,
+            "user_response": user_response_1,
+            "emotion_keywords": emotion_keywords + ["shocked", "questioning"]
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/therapy/diary/explore/follow-up",
+            json=follow_up_data_1,
+            headers=headers,
+        )
+        self.print_response("2단계 - 첫 번째 후속 질문", response)
+        
+        if response.status_code != 200:
+            print("❌ 첫 번째 후속 질문 생성 실패")
+            return
+            
+        # 두 번째 질문 추출
+        try:
+            second_result = response.json()
+            if not second_result.get("questions"):
+                print("❌ 두 번째 질문이 없음")
+                return
+            second_question = second_result["questions"][0]["question"]
+        except Exception as e:
+            print(f"❌ 두 번째 응답 파싱 실패: {e}")
+            return
+        
+        # 3단계: 두 번째 질문에 대한 답변 시뮬레이션 및 후속 질문
+        print("\n🔍 3단계: 두 번째 답변 후 후속 질문")
+        user_response_2 = "I've always been a perfectionist, and I think that's why criticism hits me so hard. My self-worth is tied to my work performance. When someone criticizes my work, it feels like they're criticizing me as a person."
+        
+        follow_up_data_2 = {
+            "diary_text": diary_text,
+            "previous_question": second_question,
+            "user_response": user_response_2,
+            "emotion_keywords": emotion_keywords + ["perfectionist", "self-worth"]
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/therapy/diary/explore/follow-up",
+            json=follow_up_data_2,
+            headers=headers,
+        )
+        self.print_response("3단계 - 두 번째 후속 질문", response)
+        
+        # 4단계: 탐색 완료 시뮬레이션
+        print("\n🔍 4단계: 탐색 완료 시나리오")
+        if response.status_code == 200:
+            try:
+                third_result = response.json()
+                if third_result.get("questions"):
+                    third_question = third_result["questions"][0]["question"]
+                    
+                    # 마지막 답변 시뮬레이션
+                    user_response_3 = "I realize that I need to separate my personal worth from my work performance. Maybe I can view criticism as an opportunity to improve rather than a personal attack. I should also communicate better with my manager about my concerns."
+                    
+                    follow_up_data_3 = {
+                        "diary_text": diary_text,
+                        "previous_question": third_question,
+                        "user_response": user_response_3,
+                        "emotion_keywords": emotion_keywords + ["realization", "improvement"]
+                    }
+                    
+                    response = requests.post(
+                        f"{self.base_url}/therapy/diary/explore/follow-up",
+                        json=follow_up_data_3,
+                        headers=headers,
+                    )
+                    self.print_response("4단계 - 최종 후속 질문", response)
+                    
+            except Exception as e:
+                print(f"❌ 세 번째 응답 파싱 실패: {e}")
+        
+        print(f"\n{'='*50}")
+        print("✅ 단계적 일기 심화 탐색 플로우 테스트 완료")
+        print(f"{'='*50}\n")
+
     def test_gallery_endpoints(self):
         """갤러리 관련 엔드포인트 테스트"""
         headers = self.get_headers()
@@ -250,6 +426,14 @@ class EmoSeumAPITester:
             # 치료 세션 관련 엔드포인트
             print("\n🧠 치료 세션 엔드포인트 테스트")
             self.test_therapy_endpoints()
+
+            # 일기 심화 탐색 관련 엔드포인트
+            print("\n📝 일기 심화 탐색 엔드포인트 테스트")
+            self.test_diary_exploration_endpoints()
+            
+            # 단계적 일기 심화 탐색 플로우 테스트
+            print("\n🔄 단계적 일기 심화 탐색 플로우 테스트")
+            self.test_stepwise_diary_exploration()
 
             # 갤러리 관련 엔드포인트
             print("\n🖼️ 갤러리 엔드포인트 테스트")
