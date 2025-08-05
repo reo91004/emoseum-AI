@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # 이 파일은 Level 3 고급 개인화 중 하나인 DRaFT+ 강화학습 모델의 훈련을 담당한다.
-# 사용자의 방명록 피드백과 도슨트 메시지 반응을 '보상(reward)'으로 사용하여
+# 사용자의 작품 제목 피드백과 도슨트 메시지 반응을 '보상(reward)'으로 사용하여
 # Stable Diffusion 모델의 UNet을 직접 미세 조정(fine-tuning)한다.
 # 이를 통해 사용자의 선호도에 더 부합하는 이미지를 생성하도록 모델을 점진적으로 개선한다.
 # ==============================================================================
@@ -49,7 +49,7 @@ class DRaFTRewardModel:
         # 보상 계산 가중치 (GPT 요소 추가)
         self.reward_weights = {
             "message_reaction_score": 0.35,  # 도슨트 메시지 반응 점수
-            "guestbook_sentiment": 0.25,  # 방명록 감정 점수
+            "artwork_title_sentiment": 0.25,  # 방명록 감정 점수
             "gpt_quality_score": 0.20,  # GPT 생성 품질 점수
             "personalization_score": 0.10,  # 개인화 수준
             "visual_quality": 0.05,  # 시각적 품질
@@ -60,7 +60,7 @@ class DRaFTRewardModel:
         self,
         image_features: torch.Tensor,
         message_reaction_score: float,
-        guestbook_sentiment: float,
+        artwork_title_sentiment: float,
         gpt_metadata: Dict[str, Any],
         user_preferences: Dict[str, float],
     ) -> torch.Tensor:
@@ -70,7 +70,7 @@ class DRaFTRewardModel:
         message_reward = (message_reaction_score - 1) / 4
 
         # 2. 방명록 감정 점수 기반 보상 (1-5 -> 0-1)
-        sentiment_reward = (guestbook_sentiment - 1) / 4
+        sentiment_reward = (artwork_title_sentiment - 1) / 4
 
         # 3. GPT 품질 점수 보상
         gpt_quality_reward = self._calculate_gpt_quality_reward(gpt_metadata)
@@ -87,7 +87,7 @@ class DRaFTRewardModel:
         # 가중 평균
         total_reward = (
             self.reward_weights["message_reaction_score"] * message_reward
-            + self.reward_weights["guestbook_sentiment"] * sentiment_reward
+            + self.reward_weights["artwork_title_sentiment"] * sentiment_reward
             + self.reward_weights["gpt_quality_score"] * gpt_quality_reward
             + self.reward_weights["personalization_score"] * personalization_reward
             + self.reward_weights["visual_quality"] * visual_reward
@@ -100,7 +100,7 @@ class DRaFTRewardModel:
         self,
         image_features: torch.Tensor,
         message_reaction_score: float,
-        guestbook_sentiment: float,
+        artwork_title_sentiment: float,
         user_preferences: Dict[str, float],
     ) -> torch.Tensor:
         """기존 보상 계산 (하위 호환성)"""
@@ -115,7 +115,7 @@ class DRaFTRewardModel:
         return self.calculate_gpt_enhanced_reward(
             image_features,
             message_reaction_score,
-            guestbook_sentiment,
+            artwork_title_sentiment,
             default_gpt_metadata,
             user_preferences,
         )
@@ -231,9 +231,9 @@ class DRaFTPlusTrainer:
         training_data = []
 
         for item in gallery_items:
-            # 완성된 아이템만 사용 (reflection + guestbook + docent_message)
+            # 완성된 아이템만 사용 (reflection + artwork_title + docent_message)
             if (
-                item.get("guestbook_title")
+                item.get("artwork_title")
                 and item.get("reflection_image_path")
                 and item.get("docent_message")
             ):
@@ -242,8 +242,8 @@ class DRaFTPlusTrainer:
                 gpt_metadata = self._extract_gpt_metadata(item)
 
                 # 방명록 감정 점수 분석
-                guestbook_sentiment = self._analyze_guestbook_sentiment(
-                    item["guestbook_title"], item.get("guestbook_tags", [])
+                artwork_title_sentiment = self._analyze_artwork_title_sentiment(
+                    item["artwork_title"]
                 )
 
                 # 도슨트 메시지 반응 점수 계산
@@ -256,11 +256,10 @@ class DRaFTPlusTrainer:
                 training_sample = {
                     "reflection_prompt": item["reflection_prompt"],
                     "docent_message": item["docent_message"],
-                    "guestbook_sentiment": guestbook_sentiment,
+                    "artwork_title_sentiment": artwork_title_sentiment,
                     "message_reaction_score": reaction_score,
                     "message_reactions": message_reactions,
-                    "guestbook_title": item["guestbook_title"],
-                    "guestbook_tags": item.get("guestbook_tags", []),
+                    "artwork_title": item["artwork_title"],
                     "emotion_keywords": item.get("emotion_keywords", []),
                     "vad_scores": item.get("vad_scores", [0, 0, 0]),
                     "user_id": item["user_id"],
@@ -498,8 +497,8 @@ class DRaFTPlusTrainer:
 
         return min(1.0, max(0.0, base_reward))
 
-    def _analyze_guestbook_sentiment(self, title: str, tags: List[str]) -> float:
-        """방명록 제목과 태그의 감정 점수 분석"""
+    def _analyze_artwork_title_sentiment(self, title: str) -> float:
+        """작품 제목의 감정 점수 분석"""
 
         positive_words = {
             "light",
@@ -636,7 +635,7 @@ class DRaFTPlusTrainer:
             training_metrics = {
                 "policy_losses": [],
                 "rewards": [],
-                "guestbook_sentiments": [],
+                "artwork_title_sentiments": [],
                 "message_reaction_scores": [],
                 "gpt_quality_scores": [],
                 "personalization_scores": [],
@@ -678,8 +677,8 @@ class DRaFTPlusTrainer:
                         # 메트릭 기록 (GPT 관련 메트릭 포함)
                         training_metrics["policy_losses"].append(loss.item())
                         training_metrics["rewards"].append(reward)
-                        training_metrics["guestbook_sentiments"].append(
-                            sample["guestbook_sentiment"]
+                        training_metrics["artwork_title_sentiments"].append(
+                            sample["artwork_title_sentiment"]
                         )
                         training_metrics["message_reaction_scores"].append(
                             sample["message_reaction_score"]
@@ -755,9 +754,9 @@ class DRaFTPlusTrainer:
                     if training_metrics["rewards"]
                     else 0
                 ),
-                "avg_guestbook_sentiment": (
-                    np.mean(training_metrics["guestbook_sentiments"])
-                    if training_metrics["guestbook_sentiments"]
+                "avg_artwork_title_sentiment": (
+                    np.mean(training_metrics["artwork_title_sentiments"])
+                    if training_metrics["artwork_title_sentiments"]
                     else 0
                 ),
                 "avg_message_reaction_score": (
@@ -811,7 +810,7 @@ class DRaFTPlusTrainer:
                 "training_metrics": {
                     "final_loss": metadata["final_loss"],
                     "avg_reward": metadata["avg_reward"],
-                    "avg_guestbook_sentiment": metadata["avg_guestbook_sentiment"],
+                    "avg_artwork_title_sentiment": metadata["avg_artwork_title_sentiment"],
                     "avg_message_reaction_score": metadata[
                         "avg_message_reaction_score"
                     ],
@@ -1018,7 +1017,7 @@ class DRaFTPlusTrainer:
             reward = self.reward_model.calculate_gpt_enhanced_reward(
                 image_features=image_features,
                 message_reaction_score=sample["message_reaction_score"],
-                guestbook_sentiment=sample["guestbook_sentiment"],
+                artwork_title_sentiment=sample["artwork_title_sentiment"],
                 gpt_metadata=gpt_metadata,
                 user_preferences=user_preferences,
             ).item()
@@ -1044,7 +1043,7 @@ class DRaFTPlusTrainer:
         # 시뮬레이션된 결과
         simulated_loss = random.uniform(0.05, 0.2)
         simulated_reward = random.uniform(0.6, 0.8)
-        simulated_guestbook_sentiment = random.uniform(3.2, 4.5)
+        simulated_artwork_title_sentiment = random.uniform(3.2, 4.5)
         simulated_message_score = random.uniform(3.5, 4.8)
         simulated_gpt_quality = random.uniform(0.6, 0.8)
         simulated_personalization = random.uniform(0.4, 0.7)
@@ -1062,7 +1061,7 @@ class DRaFTPlusTrainer:
             "simulation": True,
             "simulated_final_loss": simulated_loss,
             "simulated_avg_reward": simulated_reward,
-            "simulated_avg_guestbook_sentiment": simulated_guestbook_sentiment,
+            "simulated_avg_artwork_title_sentiment": simulated_artwork_title_sentiment,
             "simulated_avg_message_reaction_score": simulated_message_score,
             "simulated_avg_gpt_quality_score": simulated_gpt_quality,
             "simulated_avg_personalization_score": simulated_personalization,
@@ -1090,7 +1089,7 @@ class DRaFTPlusTrainer:
             "training_metrics": {
                 "final_loss": simulated_loss,
                 "avg_reward": simulated_reward,
-                "avg_guestbook_sentiment": simulated_guestbook_sentiment,
+                "avg_artwork_title_sentiment": simulated_artwork_title_sentiment,
                 "avg_message_reaction_score": simulated_message_score,
                 "avg_gpt_quality_score": simulated_gpt_quality,
                 "avg_personalization_score": simulated_personalization,

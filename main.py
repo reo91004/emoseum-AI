@@ -554,7 +554,7 @@ class EmoseumCLI:
 
                 # 다음 단계 한글 변환
                 step_names = {
-                    "guestbook": "작품 제목 작성",
+                    "artwork_title": "작품 제목 작성",
                     "docent_message": "도슨트 메시지",
                     "completed": "완료",
                 }
@@ -568,7 +568,7 @@ class EmoseumCLI:
                 progress = []
                 if status["reflection"]:
                     progress.append("✓ 이미지 생성")
-                if status["guestbook"]:
+                if status["artwork_title"]:
                     progress.append("✓ 작품 제목")
                 if status["docent_message"]:
                     progress.append("✓ 도슨트 메시지")
@@ -617,7 +617,7 @@ class EmoseumCLI:
 
         self.current_journey = journey_item.item_id
 
-        if next_step == "guestbook":
+        if next_step == "artwork_title":
             print(
                 f"\n🖼️ 이미지가 이미 생성되어 있습니다: {journey_item.reflection_image_path}"
             )
@@ -625,7 +625,7 @@ class EmoseumCLI:
                 self._write_artwork_title()
         elif next_step == "docent_message":
             print(f"\n✅ 작품 제목이 이미 작성되어 있습니다:")
-            print(f"   제목: {journey_item.guestbook_title}")
+            print(f"   제목: {journey_item.artwork_title}")
             if input("\n도슨트 메시지를 받아보시겠습니까? (y/n): ").lower() == "y":
                 self._create_docent_message()
         else:
@@ -700,9 +700,8 @@ class EmoseumCLI:
             for i, item in enumerate(gallery["items"], 1):
                 print(f"\n[{i}] {item['created_date']}")
                 print(f"    감정: {', '.join(item['emotion_keywords'])}")
-                if item["guestbook_title"]:
-                    print(f"    제목: {item['guestbook_title']}")
-                    print(f"    태그: {', '.join(item['guestbook_tags'])}")
+                if item["artwork_title"]:
+                    print(f"    제목: {item['artwork_title']}")
 
                 # 완성도 체크 변경: docent_message 기준
                 has_docent_message = (

@@ -85,7 +85,7 @@ class PromptArchitect:
 
     def create_guided_question(
         self,
-        guestbook_title: str,
+        artwork_title: str,
         emotion_keywords: List[str],
         user_id: str = "anonymous",
     ) -> str:
@@ -94,11 +94,11 @@ class PromptArchitect:
         if not self.prompt_engineer:
             raise RuntimeError("PromptEngineer가 주입되지 않았습니다.")
 
-        logger.info(f"도슨트 전환 안내 질문 생성 시작: {guestbook_title}")
+        logger.info(f"도슨트 전환 안내 질문 생성 시작: {artwork_title}")
 
         # GPT에 전환 질문 생성 요청
         result = self.prompt_engineer.generate_transition_guidance(
-            guestbook_title=guestbook_title,
+            artwork_title=artwork_title,
             emotion_keywords=emotion_keywords,
             user_id=user_id,
         )
@@ -107,7 +107,7 @@ class PromptArchitect:
             logger.error(f"전환 안내 생성 실패: {result.get('error')}")
             raise RuntimeError(f"전환 안내 생성 실패: {result.get('error')}")
 
-        logger.info(f"도슨트 전환 안내 질문 생성 완료: {guestbook_title}")
+        logger.info(f"도슨트 전환 안내 질문 생성 완료: {artwork_title}")
         return result["content"]
 
     def get_prompt_analysis(self, prompt: str) -> Dict[str, Any]:

@@ -146,7 +146,7 @@ class DocentGPT:
                     "personalization_data": {
                         "coping_style": context["coping_style"],
                         "emotion_keywords": context["emotion_keywords"],
-                        "guestbook_data": context["guestbook_data"],
+                        "artwork_title_data": context["artwork_title_data"],
                         "personalization_level": "emergency",
                         "generation_method": "emergency_safe",
                     },
@@ -170,7 +170,7 @@ class DocentGPT:
                 "personalization_data": {
                     "coping_style": context["coping_style"],
                     "emotion_keywords": context["emotion_keywords"],
-                    "guestbook_data": context["guestbook_data"],
+                    "artwork_title_data": context["artwork_title_data"],
                     "personalization_level": context.get(
                         "personalization_level", "medium"
                     ),
@@ -215,9 +215,8 @@ class DocentGPT:
             "coping_style": self._get_current_coping_style(user_profile),
             "emotion_keywords": gallery_item.emotion_keywords or [],
             "diary_excerpt": self._create_diary_excerpt(gallery_item.diary_text),
-            "guestbook_data": {
-                "title": gallery_item.guestbook_title or "",
-                "tags": gallery_item.guestbook_tags or [],
+            "artwork_title_data": {
+                "title": gallery_item.artwork_title or "",
                 "guided_question": gallery_item.guided_question or "",
             },
             "user_journey": {
@@ -280,7 +279,7 @@ class DocentGPT:
 
         if len(context.get("emotion_keywords", [])) >= 3:
             score += 1
-        if context.get("guestbook_data", {}).get("title"):
+        if context.get("artwork_title_data", {}).get("title"):
             score += 1
         if context.get("user_journey", {}).get("psychometric_tests", 0) > 0:
             score += 1

@@ -130,7 +130,7 @@ class PersonalizedLoRATrainer:
         for item in gallery_items:
             # 완성된 아이템 + GPT 메타데이터가 있는 것만 사용
             if (
-                item.get("guestbook_title")
+                item.get("artwork_title")
                 and item.get("docent_message")
                 and item.get("reflection_image_path")
                 and Path(item["reflection_image_path"]).exists()
@@ -153,10 +153,10 @@ class PersonalizedLoRATrainer:
                         "prompt": item["reflection_prompt"],
                         "image_path": item["reflection_image_path"],
                         "reaction_score": reaction_score,
-                        "guestbook_title": item["guestbook_title"],
+                        "artwork_title": item["artwork_title"],
                         "docent_message": item["docent_message"],
                         "message_reactions": message_reactions,
-                        "tags": item.get("guestbook_tags", []),
+                        # tags 제거됨
                         "emotion_keywords": item.get("emotion_keywords", []),
                         "vad_scores": item.get("vad_scores", [0, 0, 0]),
                         # GPT 관련 데이터 추가

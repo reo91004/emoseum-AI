@@ -123,7 +123,8 @@ class EmoSeumAPITester:
 
         # 2. 일기 작성
         diary_data = {
-            "diary_text": "Today I felt really depressed. I wasn't in a good mood from the morning, and work didn't go well either."
+            "diary_text": "Today I felt really depressed. I wasn't in a good mood from the morning, and work didn't go well either.",
+            "diary_id": f"test_diary_{uuid.uuid4().hex[:8]}"
         }
         response = requests.post(
             f"{self.base_url}/therapy/sessions/{self.session_id}/diary",
@@ -144,22 +145,21 @@ class EmoSeumAPITester:
         )
         self.print_response("성찰 이미지 생성", response)
 
-        # 4. 방명록 작성
-        guestbook_data = {
+        # 4. 작품 제목 작성
+        artwork_title_data = {
             "title": "Today's Therapy Reflection",
-            "tags": ["grateful", "helpful", "therapy"],
             "reflection": "Today's therapy session was very helpful. Thank you.",
         }
         response = requests.post(
-            f"{self.base_url}/therapy/sessions/{self.session_id}/guestbook",
-            json=guestbook_data,
+            f"{self.base_url}/therapy/sessions/{self.session_id}/artwork-title",
+            json=artwork_title_data,
             headers=headers,
         )
-        self.print_response("방명록 작성", response)
+        self.print_response("작품 제목 작성", response)
 
         # 5. 도슨트 메시지 생성
         response = requests.post(
-            f"{self.base_url}/therapy/sessions/{self.session_id}/curator",
+            f"{self.base_url}/therapy/sessions/{self.session_id}/docent",
             headers=headers,
         )
         self.print_response("도슨트 메시지 생성", response)

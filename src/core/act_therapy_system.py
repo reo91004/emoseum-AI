@@ -292,7 +292,7 @@ class ACTTherapySystem:
                     "generation_time": reflection_result["generation_time"],
                     "generation_method": "gpt",
                 },
-                "next_step": "guestbook",
+                "next_step": "artwork_title",
                 "guided_message": "생성된 이미지를 보며 떠오르는 감정이나 생각을 자유롭게 표현해보세요.",
                 "gpt_metadata": {
                     "prompt_tokens": reflection_result.get("prompt_tokens", 0),
@@ -681,9 +681,8 @@ class ACTTherapySystem:
                     user_id=user_id,
                     reaction_type=reaction_type,
                     docent_message=gallery_item.docent_message,
-                    guestbook_data={
-                        "title": gallery_item.guestbook_title,
-                        "tags": gallery_item.guestbook_tags,
+                    artwork_title_data={
+                        "title": gallery_item.artwork_title,
                     },
                 )
             )
@@ -829,7 +828,7 @@ class ACTTherapySystem:
             complete_journeys = [
                 item.to_dict()
                 for item in gallery_items
-                if item.guestbook_title and item.docent_message
+                if item.artwork_title and item.docent_message
             ]
 
             results = {}
@@ -882,7 +881,7 @@ class ACTTherapySystem:
         complete_journeys = [
             item
             for item in gallery_items
-            if item.guestbook_title and item.docent_message
+            if item.artwork_title and item.docent_message
         ]
 
         from ..training.lora_trainer import PersonalizedLoRATrainer

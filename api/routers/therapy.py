@@ -497,13 +497,13 @@ async def get_session_details(
         completion_status = gallery_item.get_completion_status()
         logger.info(f"Completion status for {session_id}: {completion_status}")
         logger.info(
-            f"Gallery item data: reflection_path={gallery_item.reflection_image_path}, guestbook_title={gallery_item.guestbook_title}, docent_message={gallery_item.docent_message}"
+            f"Gallery item data: reflection_path={gallery_item.reflection_image_path}, artwork_title={gallery_item.artwork_title}, docent_message={gallery_item.docent_message}"
         )
 
         if completion_status["docent_message"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = True
-        elif completion_status["guestbook"]:
+        elif completion_status["artwork_title"]:
             journey_stage = JourneyStage.CLOSURE
             is_completed = False
         elif completion_status["reflection"]:
@@ -554,10 +554,10 @@ async def get_session_details(
             ),
             artwork_title=(
                 ArtworkTitle(
-                    title=gallery_item.guestbook_title,
+                    title=gallery_item.artwork_title,
                     reflection="",
                 )
-                if gallery_item.guestbook_title
+                if gallery_item.artwork_title
                 else None
             ),
             docent_message=(

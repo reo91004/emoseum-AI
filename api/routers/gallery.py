@@ -32,7 +32,7 @@ from ..models.gallery import (
     EmotionTrend,
     EmotionAnalysis,
     GeneratedImage,
-    GuestbookEntry,
+    ArtworkTitle,
     DocentMessage
 )
 from ..models.therapy import JourneyStage
@@ -150,7 +150,7 @@ async def get_gallery_item(
             diary_text=item.get("diary_text", ""),
             emotion_analysis=EmotionAnalysis(**item["emotion_analysis"]) if item.get("emotion_analysis") else None,
             generated_image=GeneratedImage(**item["generated_image"]) if item.get("generated_image") else None,
-            guestbook_entry=GuestbookEntry(**item["guestbook_entry"]) if item.get("guestbook_entry") else None,
+            artwork_title=ArtworkTitle(**item["artwork_title"]) if item.get("artwork_title") else None,
             docent_message=DocentMessage(**item["docent_message"]) if item.get("docent_message") else None,
             journey_stage=item["journey_stage"],
             is_completed=item["is_completed"]

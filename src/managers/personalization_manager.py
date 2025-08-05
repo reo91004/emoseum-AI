@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # 이 파일은 Level 2 개인화, 즉 룰 기반 개인화를 담당한다.
-# 사용자의 방명록 내용(제목, 태그)이나 도슨트 메시지에 대한 반응을 분석하여
+# 사용자의 작품 제목 내용이나 도슨트 메시지에 대한 반응을 분석하여
 # `src.managers.user_manager.UserManager`에 저장된 사용자의 시각적 선호도 가중치를 업데이트한다.
 # 이를 통해 시스템은 사용자의 암묵적인 피드백을 학습하여 점진적으로 더 개인화된 이미지를 생성하게 된다.
 # ==============================================================================
@@ -146,29 +146,26 @@ class PersonalizationManager:
             "personal_strength": ["지혜", "용기", "힘", "능력", "강점", "재능"],
         }
 
-    def update_preferences_from_guestbook(
+    def update_preferences_from_artwork_title(
         self,
         user_id: str,
-        guestbook_title: str,
-        guestbook_tags: List[str],
+        artwork_title: str,
         image_prompt: str,
         image_metadata: Dict[str, Any] = None,
     ) -> Dict[str, float]:
-        """방명록 데이터 분석하여 선호도 업데이트"""
+        """작품 제목 데이터 분석하여 선호도 업데이트"""
 
-        # 1. 제목과 태그의 감정 극성 분석
-        title_sentiment = self._analyze_sentiment(guestbook_title)
-        tags_sentiment = self._analyze_tags_sentiment(guestbook_tags)
-        overall_sentiment = (title_sentiment + tags_sentiment) / 2
+        # 1. 제목의 감정 극성 분석
+        title_sentiment = self._analyze_sentiment(artwork_title)
 
         logger.info(
-            f"감정 극성 분석: 제목({title_sentiment:.2f}), 태그({tags_sentiment:.2f}), 전체({overall_sentiment:.2f})"
+            f"감정 극성 분석: 제목({title_sentiment:.2f})"
         )
 
         # 2. 긍정적 반응일 때만 선호도 강화
-        if overall_sentiment > 0.1:  # 약간 긍정적 이상
+        if title_sentiment > 0.1:  # 약간 긍정적 이상
             weight_updates = self._calculate_preference_updates(
-                image_prompt, guestbook_title, guestbook_tags, overall_sentiment
+                image_prompt, artwork_title, [], title_sentiment
             )
 
             # 3. 사용자 선호도 업데이트
@@ -187,7 +184,7 @@ class PersonalizationManager:
         user_id: str,
         reaction_type: str,
         docent_message: Dict[str, Any],
-        guestbook_data: Dict[str, Any],
+        artwork_title_data: Dict[str, Any],
         additional_context: Dict[str, Any] = None,
     ) -> Dict[str, float]:
         """도슨트 메시지 반응 기반 선호도 업데이트"""
@@ -206,12 +203,12 @@ class PersonalizationManager:
         # 2. 메시지 내용 분석
         message_analysis = self._analyze_docent_message(docent_message)
 
-        # 3. 방명록 컨텍스트 분석
-        guestbook_analysis = self._analyze_guestbook_context(guestbook_data)
+        # 3. 작품 제목 컨텍스트 분석
+        artwork_title_analysis = self._analyze_artwork_title_context(artwork_title_data)
 
         # 4. 선호도 업데이트 계산
         weight_updates = self._calculate_message_based_updates(
-            message_analysis, guestbook_analysis, reaction_weight
+            message_analysis, artwork_title_analysis, reaction_weight
         )
 
         # 5. 사용자 선호도 업데이트
@@ -302,19 +299,16 @@ class PersonalizationManager:
 
         return sum(factors)
 
-    def _analyze_guestbook_context(
-        self, guestbook_data: Dict[str, Any]
+    def _analyze_artwork_title_context(
+        self, artwork_title_data: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """방명록 컨텍스트 분석"""
+        """작품 제목 컨텍스트 분석"""
 
-        title = guestbook_data.get("title", "")
-        tags = guestbook_data.get("tags", [])
+        title = artwork_title_data.get("title", "")
 
         return {
             "title_sentiment": self._analyze_sentiment(title),
-            "tags_sentiment": self._analyze_tags_sentiment(tags),
             "title_characteristics": self._analyze_title_characteristics(title),
-            "tag_themes": self._analyze_tag_themes(tags),
         }
 
     def _analyze_title_characteristics(self, title: str) -> Dict[str, bool]:
@@ -371,7 +365,7 @@ class PersonalizationManager:
     def _calculate_message_based_updates(
         self,
         message_analysis: Dict[str, Any],
-        guestbook_analysis: Dict[str, Any],
+        artwork_title_analysis: Dict[str, Any],
         reaction_weight: float,
     ) -> Dict[str, float]:
         """메시지 반응 기반 선호도 업데이트 계산"""
@@ -394,16 +388,13 @@ class PersonalizationManager:
         if personalization_level > 0.5:
             updates["high_personalization_preference"] = reaction_weight * 0.2
 
-        # 4. 방명록 컨텍스트 기반 업데이트
-        title_characteristics = guestbook_analysis.get("title_characteristics", {})
+        # 4. 작품 제목 컨텍스트 기반 업데이트
+        title_characteristics = artwork_title_analysis.get("title_characteristics", {})
         for characteristic, present in title_characteristics.items():
             if present:
                 updates[f"title_{characteristic}_preference"] = reaction_weight * 0.05
 
-        # 5. 태그 테마 기반 업데이트
-        tag_themes = guestbook_analysis.get("tag_themes", [])
-        for theme in tag_themes:
-            updates[f"theme_{theme}_preference"] = reaction_weight * 0.08
+        # 5. 제목 테마 기반 업데이트는 생략 (태그 기능 제거됨)
 
         return updates
 

@@ -104,9 +104,8 @@ GALLERY_ITEM_SCHEMA = {
             "model_version": str
         }
     },
-    "guestbook_entry": {
+    "artwork_title": {
         "title": str,
-        "tags": List[str],
         "reflection": str
     },
     "docent_message": {

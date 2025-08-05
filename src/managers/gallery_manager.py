@@ -2,7 +2,7 @@
 
 # ==============================================================================
 # 이 파일은 사용자의 감정 여정 데이터를 관리하는 역할을 한다.
-# MongoDB를 사용하여 각 여정(일기, 생성된 이미지, 방명록, 도슨트 메시지 등)을
+# MongoDB를 사용하여 각 여정(일기, 생성된 이미지, 작품 제목, 도슨트 메시지 등)을
 # `GalleryItem` 객체로 저장하고 조회한다. 또한, 생성된 이미지 파일을 파일 시스템에 저장하고 관리한다.
 # `ACTTherapySystem`은 이 매니저를 통해 사용자의 미술관 데이터를 생성, 조회, 업데이트한다.
 # ==============================================================================
@@ -32,8 +32,7 @@ class GalleryItem:
         vad_scores: Tuple[float, float, float],
         reflection_prompt: str,
         reflection_image_path: str,
-        guestbook_title: str = "",
-        guestbook_tags: List[str] = None,
+        artwork_title: str = "",
         docent_message: Dict[str, Any] = None,
         message_reactions: List[str] = None,
         guided_question: str = "",
@@ -56,8 +55,7 @@ class GalleryItem:
         self.vad_scores = vad_scores
         self.reflection_prompt = reflection_prompt
         self.reflection_image_path = reflection_image_path
-        self.guestbook_title = guestbook_title
-        self.guestbook_tags = guestbook_tags or []
+        self.artwork_title = artwork_title
         self.docent_message = docent_message or {}
         self.message_reactions = message_reactions or []
         self.guided_question = guided_question
@@ -83,8 +81,7 @@ class GalleryItem:
             "vad_scores": self.vad_scores,
             "reflection_prompt": self.reflection_prompt,
             "reflection_image_path": self.reflection_image_path,
-            "guestbook_title": self.guestbook_title,
-            "guestbook_tags": self.guestbook_tags,
+            "artwork_title": self.artwork_title,
             "docent_message": self.docent_message,
             "message_reactions": self.message_reactions,
             "guided_question": self.guided_question,
@@ -104,7 +101,7 @@ class GalleryItem:
         """각 단계별 완료 상태 반환"""
         return {
             "reflection": bool(self.reflection_image_path),
-            "guestbook": bool(self.guestbook_title),
+            "artwork_title": bool(self.artwork_title),
             "docent_message": bool(
                 self.docent_message
                 and isinstance(self.docent_message, dict)
@@ -123,8 +120,8 @@ class GalleryItem:
 
         if not status["reflection"]:
             return "reflection"
-        elif not status["guestbook"]:
-            return "guestbook"
+        elif not status["artwork_title"]:
+            return "artwork_title"
         elif not status["docent_message"]:
             return "docent_message"
         else:
@@ -241,8 +238,7 @@ class GalleryManager:
             "vad_scores": list(vad_scores),
             "reflection_prompt": reflection_prompt,
             "reflection_image_path": str(reflection_path),
-            "guestbook_title": "",
-            "guestbook_tags": [],
+            "artwork_title": "",
             "docent_message": {},
             "message_reactions": [],
             "guided_question": "",
@@ -269,22 +265,20 @@ class GalleryManager:
             logger.error(f"미술관 아이템 생성 실패: {e}")
             raise
 
-    def complete_guestbook(
+    def complete_artwork_title(
         self,
         item_id: str,
-        guestbook_title: str,
-        guestbook_tags: List[str],
+        artwork_title: str,
         guided_question: str,
     ) -> bool:
-        """방명록 작성 완료 (ACT 3단계 완료)"""
+        """작품 제목 작성 완료 (ACT 3단계 완료)"""
 
         try:
             result = self.gallery_items.update_one(
                 {"item_id": item_id},
                 {
                     "$set": {
-                        "guestbook_title": guestbook_title,
-                        "guestbook_tags": guestbook_tags,
+                        "artwork_title": artwork_title,
                         "guided_question": guided_question,
                     }
                 },
@@ -292,12 +286,12 @@ class GalleryManager:
 
             success = result.modified_count > 0
             if success:
-                logger.info(f"방명록 작성이 완료되었습니다: 아이템 {item_id}")
+                logger.info(f"작품 제목 작성이 완료되었습니다: 아이템 {item_id}")
 
             return success
 
         except Exception as e:
-            logger.error(f"방명록 작성 완료 실패: {e}")
+            logger.error(f"작품 제목 작성 완료 실패: {e}")
             return False
 
     def add_docent_message(self, item_id: str, docent_message: Dict[str, Any]) -> bool:
@@ -438,8 +432,7 @@ class GalleryManager:
             vad_scores=tuple(doc.get("vad_scores", [0.0, 0.0, 0.0])),
             reflection_prompt=doc.get("reflection_prompt", ""),
             reflection_image_path=doc.get("reflection_image_path", ""),
-            guestbook_title=doc.get("guestbook_title", ""),
-            guestbook_tags=doc.get("guestbook_tags", []),
+            artwork_title=doc.get("artwork_title", ""),
             docent_message=doc.get("docent_message", {}),
             message_reactions=doc.get("message_reactions", []),
             guided_question=doc.get("guided_question", ""),
@@ -607,14 +600,14 @@ class GalleryManager:
             )
             vad_data = [doc["vad_scores"] for doc in vad_docs if "vad_scores" in doc]
 
-            # 방명록 제목들
+            # 작품 제목들
             title_docs = list(
                 self.gallery_items.find(
-                    {"user_id": user_id, "guestbook_title": {"$ne": ""}},
-                    {"guestbook_title": 1},
+                    {"user_id": user_id, "artwork_title": {"$ne": ""}},
+                    {"artwork_title": 1},
                 )
             )
-            titles = [doc["guestbook_title"] for doc in title_docs]
+            titles = [doc["artwork_title"] for doc in title_docs]
 
             # 방문 패턴 분석
             visit_pipeline = [
@@ -851,7 +844,7 @@ class GalleryManager:
         }
 
     def _analyze_title_sentiments(self, titles: List[str]) -> Dict[str, Any]:
-        """방명록 제목 감정 분석"""
+        """작품 제목 감정 분석"""
         if not titles:
             return {}
 

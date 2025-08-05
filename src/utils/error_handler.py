@@ -112,7 +112,7 @@ class GPTErrorHandler:
                 "operation": operation,
                 "user_id": user_context.get("user_id", "anonymous"),
                 "gallery_item_id": user_context.get("gallery_item_id", "unknown"),
-                "guestbook_title": user_context.get("guestbook_title", ""),
+                "artwork_title": user_context.get("artwork_title", ""),
             },
         )
 
@@ -127,7 +127,7 @@ class GPTErrorHandler:
             error_message=f"Transition guidance generation failed: {error}",
             context={
                 "component": "transition_guidance",
-                "guestbook_title": guidance_context.get("guestbook_title", ""),
+                "artwork_title": guidance_context.get("artwork_title", ""),
                 "emotion_keywords": guidance_context.get("emotion_keywords", []),
                 "user_id": guidance_context.get("user_id", "anonymous"),
             },
