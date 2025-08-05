@@ -34,6 +34,7 @@ class GeneratedImage(BaseModel):
 
 class ArtworkTitle(BaseModel):
     title: str
+    description: Optional[str] = ""
     reflection: str
 
 

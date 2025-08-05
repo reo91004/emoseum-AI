@@ -33,6 +33,7 @@ class GalleryItem:
         reflection_prompt: str,
         reflection_image_path: str,
         artwork_title: str = "",
+        artwork_description: str = "",
         docent_message: Dict[str, Any] = None,
         message_reactions: List[str] = None,
         created_date: str = "",
@@ -55,6 +56,7 @@ class GalleryItem:
         self.reflection_prompt = reflection_prompt
         self.reflection_image_path = reflection_image_path
         self.artwork_title = artwork_title
+        self.artwork_description = artwork_description
         self.docent_message = docent_message or {}
         self.message_reactions = message_reactions or []
         self.created_date = created_date or datetime.now().isoformat()
@@ -80,6 +82,7 @@ class GalleryItem:
             "reflection_prompt": self.reflection_prompt,
             "reflection_image_path": self.reflection_image_path,
             "artwork_title": self.artwork_title,
+            "artwork_description": self.artwork_description,
             "docent_message": self.docent_message,
             "message_reactions": self.message_reactions,
             "created_date": self.created_date,
@@ -236,6 +239,7 @@ class GalleryManager:
             "reflection_prompt": reflection_prompt,
             "reflection_image_path": str(reflection_path),
             "artwork_title": "",
+            "artwork_description": "",
             "docent_message": {},
             "message_reactions": [],
             "created_date": now.isoformat(),
@@ -265,6 +269,7 @@ class GalleryManager:
         self,
         item_id: str,
         artwork_title: str,
+        artwork_description: str = "",
         guided_question: str = "",  # 하위 호환성을 위해 기본값 유지
     ) -> bool:
         """작품 제목 작성 완료 (ACT 3단계 완료)"""
@@ -275,6 +280,7 @@ class GalleryManager:
                 {
                     "$set": {
                         "artwork_title": artwork_title,
+                        "artwork_description": artwork_description,
                     }
                 },
             )
@@ -428,6 +434,7 @@ class GalleryManager:
             reflection_prompt=doc.get("reflection_prompt", ""),
             reflection_image_path=doc.get("reflection_image_path", ""),
             artwork_title=doc.get("artwork_title", ""),
+            artwork_description=doc.get("artwork_description", ""),
             docent_message=doc.get("docent_message", {}),
             message_reactions=doc.get("message_reactions", []),
             created_date=doc.get("created_date", ""),

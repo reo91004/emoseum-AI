@@ -471,8 +471,24 @@ class ACTTherapySystem:
         if not gallery_item or gallery_item.user_id != user_id:
             raise ValueError("갤러리 아이템을 찾을 수 없습니다.")
 
+        # 작품 설명 생성
+        description_result = self.gpt_service.generate_artwork_description(
+            diary_text=gallery_item.diary_text,
+            emotion_keywords=gallery_item.emotion_keywords,
+            image_prompt=gallery_item.reflection_prompt,
+            artwork_title=artwork_title,
+            user_id=user_id
+        )
+        
+        artwork_description = ""
+        if description_result.get("success", False):
+            artwork_description = description_result.get("description", "")
+            logger.info(f"작품 설명 생성 성공: {artwork_description}")
+        else:
+            logger.warning(f"작품 설명 생성 실패: {description_result.get('error', 'Unknown error')}")
+
         success = self.gallery_manager.complete_artwork_title(
-            gallery_item_id, artwork_title, ""
+            gallery_item_id, artwork_title, artwork_description
         )
 
         if not success:
@@ -492,6 +508,7 @@ class ACTTherapySystem:
             "step": "defusion_complete",
             "artwork_title": {
                 "title": artwork_title,
+                "description": artwork_description,
             },
             "personalization_updates": personalization_updates,
             "next_step": "docent_message",
