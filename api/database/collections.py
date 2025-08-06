@@ -99,7 +99,7 @@ GALLERY_ITEM_SCHEMA = {
         "image_path": str,
         "prompt_used": str,
         "generation_metadata": {
-            "service_used": str,  # local_gpu, external_gpu, colab
+            "service_used": str,  # local, colab
             "generation_time": float,
             "model_version": str
         }

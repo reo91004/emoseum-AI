@@ -19,7 +19,7 @@ from ..managers.user_manager import UserManager, PsychometricResult
 from ..therapy.prompt_architect import PromptArchitect
 from ..managers.personalization_manager import PersonalizationManager
 from ..services.image_generator import ImageGenerator
-from ..services.image_service_wrapper import ColabImageGenerator, ExternalImageGenerator
+from ..services.image_service_wrapper import ColabImageGenerator
 from ..services.emotion_analyzer import get_emotion_analyzer
 from ..services.diary_exploration_service import get_diary_exploration_service
 from ..managers.gallery_manager import GalleryManager, GalleryItem
