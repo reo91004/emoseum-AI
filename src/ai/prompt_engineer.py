@@ -107,12 +107,12 @@ class PromptEngineer:
 
             # 3. GPT API 호출 (GPTService에서 시스템/사용자 메시지 구성)
             gpt_response = self.gpt_service.generate_prompt_engineering_response(
-                diary_text=diary_text,
+                diary_text=diary_text,  # 전체 일기 전달 (맥락 보존)
                 emotion_keywords=emotion_keywords,
                 coping_style=coping_style,
                 visual_preferences=visual_preferences,
                 user_id=user_id,
-                max_tokens=100,
+                max_tokens=400,  # 250-350자 프롬프트 생성을 위한 충분한 토큰
                 temperature=0.7,
             )
 
@@ -190,18 +190,13 @@ class PromptEngineer:
         # 연속된 공백 정리
         processed_prompt = re.sub(r"\s+", " ", processed_prompt)
 
-        # 길이 제한 (150자)
-        if len(processed_prompt) > 150:
-            truncated_prompt = processed_prompt[:147] + "..."
-
-            # 단어 중간에서 자르지 않도록 조정
-            if truncated_prompt.endswith((" ,", " .", " ;", ",")):
-                # 마지막 쉼표나 완전한 구문을 찾아서 그 지점에서 자르기
-                last_comma = truncated_prompt.rfind(", ")
-                if last_comma > len(truncated_prompt) * 0.7:  # 너무 많이 자르지 않도록
-                    truncated_prompt = truncated_prompt[:last_comma]
-
-            processed_prompt = truncated_prompt.strip()
+        # 길이 검증 (GPT가 이미 적절한 길이로 생성)
+        if len(processed_prompt) > 350:
+            logger.warning(f"프롬프트가 목표 길이(350자)를 초과: {len(processed_prompt)}자")
+        elif len(processed_prompt) < 250:
+            logger.warning(f"프롬프트가 목표 길이(250자)보다 짧음: {len(processed_prompt)}자")
+        else:
+            logger.info(f"프롬프트 길이 적절: {len(processed_prompt)}자").strip()
 
         return processed_prompt
 

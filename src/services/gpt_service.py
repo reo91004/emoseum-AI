@@ -149,7 +149,7 @@ class GPTService:
 
         response = self._make_api_call(
             messages=messages,
-            max_tokens=kwargs.get("max_tokens", 150),
+            max_tokens=kwargs.get("max_tokens", 400),  # SD 1.5는 77토큰(약 300-400자) 처리 가능
             temperature=kwargs.get("temperature", 0.7),
             purpose="prompt_engineering",
             user_id=user_id,
@@ -677,14 +677,17 @@ Tone: {docent_data[coping_style].get('tone', 'balanced')}"""
             logger.info(f"System message 로드 성공: {len(system_message)} 문자")
 
             # 사용자 메시지 구성
+            # 전체 컨텍스트 제공 (자르지 않음)
             user_message = f"""Based on the following information, create a museum-style description for this artwork:
 
-Diary excerpt: "{diary_text[:200]}..."
+Diary text: "{diary_text}"
 Emotion keywords: {', '.join(emotion_keywords)}
-Image prompt: "{image_prompt[:150]}..."
+Image prompt: "{image_prompt}"
 Artwork title: "{artwork_title}"
 
-Generate a single, elegant sentence (15-25 words) that captures the emotional essence and artistic elements of this work."""
+STRICT REQUIREMENT: Generate EXACTLY one sentence with 15-25 words (count every word).
+The sentence must capture the emotional essence and artistic elements of this work.
+Output ONLY the sentence, no word count or explanations."""
 
             messages = [
                 {"role": "system", "content": system_message},
@@ -712,12 +715,12 @@ Generate a single, elegant sentence (15-25 words) that captures the emotional es
             if not description:
                 raise ValueError("Empty artwork description generated")
 
-            # 길이 검증 (단어 수 15-25개)
+            # 길이 검증만 수행 (GPT가 이미 적절한 길이로 생성)
             word_count = len(description.split())
-            if word_count > 30:  # 약간의 여유를 둠
-                # 첫 번째 문장만 사용
-                first_sentence = description.split('.')[0] + '.'
-                description = first_sentence
+            if word_count > 25:
+                logger.warning(f"작품 설명이 목표 단어 수(25)를 초과: {word_count}단어")
+            elif word_count < 15:
+                logger.warning(f"작품 설명이 목표 단어 수(15)보다 짧음: {word_count}단어")
 
             logger.info(f"작품 설명 생성 완료: {len(description)}자, {word_count}단어")
 
