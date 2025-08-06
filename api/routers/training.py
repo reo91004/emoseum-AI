@@ -154,11 +154,12 @@ async def start_lora_training(
             }
         }
         
-        # 백그라운드에서 훈련 시작
+        # 백그라운드에서 실제 LoRA 훈련 시작
         background_tasks.add_task(
-            simulate_lora_training,
+            start_actual_lora_training,
             training_id,
             current_user["user_id"],
+            db,
             act_system
         )
         
@@ -230,11 +231,12 @@ async def start_draft_training(
             }
         }
         
-        # 백그라운드에서 훈련 시작
+        # 백그라운드에서 실제 DRaFT 훈련 시작
         background_tasks.add_task(
-            simulate_draft_training,
+            start_actual_draft_training,
             training_id,
             current_user["user_id"],
+            db,
             act_system
         )
         
@@ -299,34 +301,45 @@ async def get_training_status(
         )
 
 
-# 백그라운드 태스크 시뮬레이터 (프로덕션에서는 실제 훈련 로직 사용)
-async def simulate_lora_training(training_id: str, user_id: str, act_system):
-    """LoRA 훈련 진행 시뮬레이션"""
+# 실제 훈련 백그라운드 태스크
+async def start_actual_lora_training(
+    training_id: str, 
+    user_id: str,
+    db: AsyncIOMotorDatabase,
+    act_system
+):
+    """실제 LoRA 훈련 진행"""
     try:
-        logger.info(f"Starting LoRA training simulation for user {user_id}")
+        logger.info(f"Starting actual LoRA training for user {user_id}")
         training_status[training_id]["status"] = TrainingStatus.IN_PROGRESS
         
-        # 훈련 단계 시뮬레이션
-        for step in range(100):
-            await asyncio.sleep(1)  # 처리 시간 시뮬레이션
+        # 갤러리 데이터 조회
+        gallery_items = await db["gallery"].find(
+            {"user_id": user_id}
+        ).to_list(length=None)
+        
+        # LoRA 트레이너 초기화
+        from src.training.lora_trainer import LoRATrainer
+        lora_trainer = LoRATrainer()
+        
+        try:
+            # 실제 훈련 실행
+            result = lora_trainer.train_user_lora(user_id, gallery_items)
             
-            training_status[training_id]["progress"] = {
-                "current_step": step + 1,
-                "total_steps": 100,
-                "percentage": (step + 1) / 100 * 100,
-                "estimated_time_remaining": (100 - step - 1) * 1
-            }
+            if result["success"]:
+                # 훈련 완료
+                training_status[training_id]["status"] = TrainingStatus.COMPLETED
+                training_status[training_id]["completed_at"] = datetime.utcnow()
+                training_status[training_id]["result_metrics"] = result.get("training_metrics", {})
+                logger.info(f"LoRA training completed for user {user_id}")
+            else:
+                # 훈련 실패
+                training_status[training_id]["status"] = TrainingStatus.FAILED
+                training_status[training_id]["error_message"] = result.get("error", "Unknown error")
+                logger.error(f"LoRA training failed for user {user_id}: {result.get('error')}")
         
-        # 훈련 완료
-        training_status[training_id]["status"] = TrainingStatus.COMPLETED
-        training_status[training_id]["completed_at"] = datetime.utcnow()
-        training_status[training_id]["result_metrics"] = {
-            "model_improvement": 0.15,
-            "personalization_score": 0.82,
-            "training_loss": 0.023
-        }
-        
-        logger.info(f"LoRA training completed for user {user_id}")
+        finally:
+            lora_trainer.cleanup()
         
     except Exception as e:
         logger.error(f"LoRA training failed: {e}")
@@ -334,33 +347,44 @@ async def simulate_lora_training(training_id: str, user_id: str, act_system):
         training_status[training_id]["error_message"] = str(e)
 
 
-async def simulate_draft_training(training_id: str, user_id: str, act_system):
-    """DRaFT+ 훈련 진행 시뮬레이션"""
+async def start_actual_draft_training(
+    training_id: str,
+    user_id: str,
+    db: AsyncIOMotorDatabase,
+    act_system
+):
+    """실제 DRaFT+ 훈련 진행"""
     try:
-        logger.info(f"Starting DRaFT+ training simulation for user {user_id}")
+        logger.info(f"Starting actual DRaFT+ training for user {user_id}")
         training_status[training_id]["status"] = TrainingStatus.IN_PROGRESS
         
-        # 훈련 단계 시뮬레이션
-        for step in range(200):
-            await asyncio.sleep(1)  # 처리 시간 시뮬레이션
+        # 갤러리 데이터 조회
+        gallery_items = await db["gallery"].find(
+            {"user_id": user_id}
+        ).to_list(length=None)
+        
+        # DRaFT+ 트레이너 초기화
+        from src.training.draft_trainer import DRaFTPlusTrainer
+        draft_trainer = DRaFTPlusTrainer()
+        
+        try:
+            # 실제 훈련 실행
+            result = draft_trainer.train_user_draft(user_id, gallery_items)
             
-            training_status[training_id]["progress"] = {
-                "current_step": step + 1,
-                "total_steps": 200,
-                "percentage": (step + 1) / 200 * 100,
-                "estimated_time_remaining": (200 - step - 1) * 1
-            }
+            if result["success"]:
+                # 훈련 완료
+                training_status[training_id]["status"] = TrainingStatus.COMPLETED
+                training_status[training_id]["completed_at"] = datetime.utcnow()
+                training_status[training_id]["result_metrics"] = result.get("training_metrics", {})
+                logger.info(f"DRaFT+ training completed for user {user_id}")
+            else:
+                # 훈련 실패
+                training_status[training_id]["status"] = TrainingStatus.FAILED
+                training_status[training_id]["error_message"] = result.get("error", "Unknown error")
+                logger.error(f"DRaFT+ training failed for user {user_id}: {result.get('error')}")
         
-        # 훈련 완료
-        training_status[training_id]["status"] = TrainingStatus.COMPLETED
-        training_status[training_id]["completed_at"] = datetime.utcnow()
-        training_status[training_id]["result_metrics"] = {
-            "policy_improvement": 0.23,
-            "reward_optimization": 0.89,
-            "convergence_score": 0.91
-        }
-        
-        logger.info(f"DRaFT+ training completed for user {user_id}")
+        finally:
+            draft_trainer.cleanup()
         
     except Exception as e:
         logger.error(f"DRaFT+ training failed: {e}")
