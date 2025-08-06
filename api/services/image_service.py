@@ -41,12 +41,14 @@ class LocalGPUService(ImageGenerationService):
             # Extract parameters
             output_dir = kwargs.get("output_dir", "data/gallery_images/reflection")
             filename = kwargs.get("filename", "generated_image.png")
+            width = kwargs.get("width", 512)
+            height = kwargs.get("height", 512)
             
-            # Use existing image generator
+            # Use existing image generator with 1:1 aspect ratio
             result = self.image_generator.generate_image(
                 prompt=prompt,
-                output_dir=output_dir,
-                filename=filename
+                width=width,
+                height=height
             )
             
             if result and result.get("success"):
@@ -82,75 +84,6 @@ class LocalGPUService(ImageGenerationService):
             return False
 
 
-class ExternalGPUService(ImageGenerationService):
-    """External GPU server image generation service"""
-    
-    def __init__(self, endpoint: str, api_key: Optional[str] = None):
-        self.endpoint = endpoint
-        self.api_key = api_key
-        logger.info(f"External GPU service initialized: {endpoint}")
-    
-    async def generate_image(self, prompt: str, **kwargs) -> Dict[str, Any]:
-        """Generate image using external GPU server"""
-        try:
-            import httpx
-            
-            headers = {}
-            if self.api_key:
-                headers["Authorization"] = f"Bearer {self.api_key}"
-            
-            payload = {
-                "prompt": prompt,
-                "model": "stable-diffusion-v1-5",
-                **kwargs
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.endpoint}/generate",
-                    json=payload,
-                    headers=headers,
-                    timeout=120.0
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    return {
-                        "success": True,
-                        "image_url": result.get("image_url"),
-                        "prompt": prompt,
-                        "generation_time": result.get("generation_time", 30.0),
-                        "service": "external_gpu"
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"HTTP {response.status_code}: {response.text}",
-                        "service": "external_gpu"
-                    }
-                    
-        except Exception as e:
-            logger.error(f"External GPU generation failed: {e}")
-            return {
-                "success": False,
-                "error": str(e),
-                "service": "external_gpu"
-            }
-    
-    async def health_check(self) -> bool:
-        """Check if external GPU service is healthy"""
-        try:
-            import httpx
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.endpoint}/health",
-                    timeout=10.0
-                )
-                return response.status_code == 200
-        except Exception:
-            return False
-
 
 class ColabService(ImageGenerationService):
     """Google Colab image generation service"""
@@ -165,7 +98,12 @@ class ColabService(ImageGenerationService):
         try:
             import httpx
             
-            payload = {"prompt": prompt}
+            # 1:1 비율 강제 (512x512)
+            payload = {
+                "prompt": prompt,
+                "width": kwargs.get("width", 512),
+                "height": kwargs.get("height", 512)
+            }
             logger.info(f"Sending to Colab: {self.notebook_url}/generate")
             
             async with httpx.AsyncClient(timeout=120.0) as client:

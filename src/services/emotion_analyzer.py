@@ -72,7 +72,8 @@ class GoEmotionsAnalyzer:
                     'gratitude', 'joy', 'love', 'optimism', 'pride', 'relief'],
         'negative': ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust',
                     'embarrassment', 'fear', 'grief', 'nervousness', 'remorse', 'sadness'],
-        'ambiguous': ['confusion', 'curiosity', 'desire', 'realization', 'surprise', 'neutral']
+        'ambiguous': ['confusion', 'curiosity', 'desire', 'realization', 'surprise'],
+        'neutral': ['neutral']
     }
     
     def __init__(self, model_name: str = None):
@@ -116,13 +117,12 @@ class GoEmotionsAnalyzer:
             logger.error(f"GoEmotions 모델 로드 실패: {e}")
             self.classifier = None
     
-    def analyze_emotions(self, text: str, threshold: float = 0.3) -> Dict[str, Any]:
+    def analyze_emotions(self, text: str) -> Dict[str, Any]:
         """
         텍스트에서 감정 분석
         
         Args:
             text: 분석할 텍스트
-            threshold: 감정 선택 임계값 (0-1)
             
         Returns:
             감정 분석 결과 딕셔너리
@@ -134,60 +134,57 @@ class GoEmotionsAnalyzer:
             # 모델 예측
             results = self.classifier(text)
             
-            # 점수가 높은 감정들 선택
-            emotions = []
+            # 모든 감정 점수 수집
             scores = {}
-            
             for result in results[0]:  # pipeline은 리스트 안에 결과를 반환
                 label = result['label']
                 score = result['score']
                 scores[label] = score
-                
-                if score >= threshold:
-                    emotions.append((label, score))
             
-            # 점수 기준으로 정렬
-            emotions.sort(key=lambda x: x[1], reverse=True)
+            # 정규화 (합=1)
+            total_score = sum(scores.values())
+            if total_score > 0:
+                normalized_all = {k: v / total_score for k, v in scores.items()}
+            else:
+                normalized_all = {emotion: 1/28 for emotion in self.EMOTION_LABELS}
             
-            # 상위 5개 감정 선택
-            top_emotions = emotions[:5]
-            emotion_keywords = [em[0] for em in top_emotions]
+            # 상위 5개 감정 선택 (threshold 없이)
+            sorted_emotions = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+            top5_emotions = sorted_emotions[:5]
+            emotion_keywords = [emotion for emotion, _ in top5_emotions]
             
-            # 감정이 없으면 neutral 추가
-            if not emotion_keywords:
-                emotion_keywords = ['neutral']
-                top_emotions = [('neutral', 1.0)]
+            # 카테고리별 감정 점수 합산
+            emotion_categories = {
+                'positive': sum(normalized_all.get(e, 0) for e in self.EMOTION_GROUPS['positive']),
+                'negative': sum(normalized_all.get(e, 0) for e in self.EMOTION_GROUPS['negative']),
+                'ambiguous': sum(normalized_all.get(e, 0) for e in self.EMOTION_GROUPS['ambiguous']),
+                'neutral': normalized_all.get('neutral', 0)
+            }
             
-            # VAD 점수 계산
-            vad_scores = self._calculate_vad_scores(top_emotions)
+            # VAD 점수 계산 (상위 5개 기준)
+            vad_scores = self._calculate_vad_scores(top5_emotions)
             
             # 주요 감정 결정
             primary_emotion = emotion_keywords[0] if emotion_keywords else 'neutral'
             
             # 감정 강도 계산
-            emotional_intensity = self._calculate_intensity(top_emotions)
+            emotional_intensity = self._calculate_intensity(top5_emotions)
             
             return {
                 "keywords": emotion_keywords,
                 "vad_scores": vad_scores,
-                "confidence": float(np.mean([score for _, score in top_emotions])),
+                "confidence": float(np.mean([score for _, score in top5_emotions])),
                 "primary_emotion": primary_emotion,
                 "emotional_intensity": emotional_intensity,
-                "all_scores": scores,
-                "top_emotions": dict(top_emotions)
+                "all_scores": scores,  # 원본 점수
+                "normalized_all": normalized_all,  # 정규화된 점수
+                "emotion_categories": emotion_categories,  # 카테고리별 합산
+                "top_emotions": dict(top5_emotions)
             }
             
         except Exception as e:
             logger.error(f"감정 분석 실패: {e}")
-            # 오류 시 기본값 반환
-            return {
-                "keywords": ["neutral"],
-                "vad_scores": [0.5, 0.5, 0.5],
-                "confidence": 0.0,
-                "primary_emotion": "neutral",
-                "emotional_intensity": "low",
-                "error": str(e)
-            }
+            raise
     
     def _calculate_vad_scores(self, emotions: List[Tuple[str, float]]) -> List[float]:
         """가중 평균으로 VAD 점수 계산"""
@@ -264,17 +261,27 @@ class GoEmotionsAnalyzer:
             "group": emotion_group
         }
     
-    def batch_analyze(self, texts: List[str], threshold: float = 0.3) -> List[Dict[str, Any]]:
+    def batch_analyze(self, texts: List[str]) -> List[Dict[str, Any]]:
         """여러 텍스트를 한 번에 분석"""
         results = []
         for text in texts:
-            result = self.analyze_emotions(text, threshold)
+            result = self.analyze_emotions(text)
             results.append(result)
         return results
 
 
 class ColabGoEmotionsAnalyzer:
     """Colab에서 실행되는 GoEmotions 모델을 사용한 감정 분석기"""
+    
+    # 감정 그룹핑 (GoEmotionsAnalyzer와 동일)
+    EMOTION_GROUPS = {
+        'positive': ['admiration', 'amusement', 'approval', 'caring', 'excitement', 
+                    'gratitude', 'joy', 'love', 'optimism', 'pride', 'relief'],
+        'negative': ['anger', 'annoyance', 'disappointment', 'disapproval', 'disgust',
+                    'embarrassment', 'fear', 'grief', 'nervousness', 'remorse', 'sadness'],
+        'ambiguous': ['confusion', 'curiosity', 'desire', 'realization', 'surprise'],
+        'neutral': ['neutral']
+    }
     
     def __init__(self, colab_url: str = None):
         """
@@ -289,13 +296,12 @@ class ColabGoEmotionsAnalyzer:
         
         logger.info(f"Colab GoEmotions 분석기 초기화: {self.colab_url}")
     
-    def analyze_emotions(self, text: str, threshold: float = 0.3) -> Dict[str, Any]:
+    def analyze_emotions(self, text: str) -> Dict[str, Any]:
         """
         Colab 서버를 통해 텍스트 감정 분석
         
         Args:
             text: 분석할 텍스트
-            threshold: 감정 선택 임계값 (0-1)
             
         Returns:
             감정 분석 결과 딕셔너리
@@ -303,8 +309,7 @@ class ColabGoEmotionsAnalyzer:
         try:
             # Colab 서버에 요청
             payload = {
-                "text": text,
-                "threshold": threshold
+                "text": text
             }
             
             response = requests.post(
@@ -316,8 +321,31 @@ class ColabGoEmotionsAnalyzer:
             if response.status_code == 200:
                 result = response.json()
                 if result.get("success"):
-                    # 응답에서 success 키를 제거하고 반환
+                    # 응답에서 success 키를 제거
                     result_data = {k: v for k, v in result.items() if k != "success"}
+                    
+                    # all_scores에서 정규화 및 카테고리화 추가
+                    all_scores = result_data.get("all_scores", {})
+                    if all_scores:
+                        # 정규화 (합=1)
+                        total_score = sum(all_scores.values())
+                        if total_score > 0:
+                            normalized_all = {k: v / total_score for k, v in all_scores.items()}
+                        else:
+                            normalized_all = all_scores
+                        
+                        # 카테고리별 감정 점수 합산
+                        emotion_categories = {
+                            'positive': sum(normalized_all.get(e, 0) for e in self.EMOTION_GROUPS['positive']),
+                            'negative': sum(normalized_all.get(e, 0) for e in self.EMOTION_GROUPS['negative']),
+                            'ambiguous': sum(normalized_all.get(e, 0) for e in self.EMOTION_GROUPS['ambiguous']),
+                            'neutral': normalized_all.get('neutral', 0)
+                        }
+                        
+                        # 결과에 추가
+                        result_data["normalized_all"] = normalized_all
+                        result_data["emotion_categories"] = emotion_categories
+                    
                     logger.info(f"Colab 감정 분석 성공: {result_data.get('keywords', [])}")
                     return result_data
                 else:
@@ -327,21 +355,13 @@ class ColabGoEmotionsAnalyzer:
                 
         except Exception as e:
             logger.error(f"Colab 감정 분석 실패: {e}")
-            # 오류 시 기본값 반환
-            return {
-                "keywords": ["neutral"],
-                "vad_scores": [0.5, 0.5, 0.5],
-                "confidence": 0.0,
-                "primary_emotion": "neutral",
-                "emotional_intensity": "low",
-                "error": str(e)
-            }
+            raise
     
-    def batch_analyze(self, texts: List[str], threshold: float = 0.3) -> List[Dict[str, Any]]:
+    def batch_analyze(self, texts: List[str]) -> List[Dict[str, Any]]:
         """여러 텍스트를 한 번에 분석"""
         results = []
         for text in texts:
-            result = self.analyze_emotions(text, threshold)
+            result = self.analyze_emotions(text)
             results.append(result)
         return results
     

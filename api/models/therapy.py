@@ -18,6 +18,8 @@ class EmotionAnalysis(BaseModel):
     vad_scores: List[float] = Field(..., min_items=3, max_items=3)
     primary_emotion: str
     intensity: float = Field(..., ge=0.0, le=1.0)
+    normalized_all: Optional[Dict[str, float]] = Field(default=None, description="28개 감정 정규화 점수")
+    emotion_categories: Optional[Dict[str, float]] = Field(default=None, description="카테고리별 감정 점수")
 
 
 class ImageGenerationMetadata(BaseModel):

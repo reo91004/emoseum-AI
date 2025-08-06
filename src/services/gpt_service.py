@@ -203,25 +203,42 @@ class GPTService:
 
         response = self._make_api_call(
             messages=messages,
-            max_tokens=kwargs.get("max_tokens", 500),
+            max_tokens=kwargs.get("max_tokens", 200),  # 600자 제한을 위한 토큰 수 조정
             temperature=kwargs.get("temperature", 0.8),
             purpose="docent_message",
             user_id=user_id,
         )
 
         if response["success"]:
+            # 길이 검증 (600자 제한)
+            raw_content = response["content"]
+            if len(raw_content) > 600:
+                logger.warning(f"도슨트 메시지가 600자를 초과: {len(raw_content)}자")
+                # 600자로 자르되 문장 중간에서 자르지 않도록 조정
+                truncated_content = raw_content[:597] + "..."
+                # 마지막 완전한 문장에서 끝나도록 조정
+                last_period = truncated_content.rfind('. ')
+                if last_period > 400:  # 너무 많이 자르지 않는 선에서
+                    truncated_content = truncated_content[:last_period + 1]
+                raw_content = truncated_content
+                logger.info(f"도슨트 메시지를 {len(raw_content)}자로 조정")
+
             # 메시지 구조화
             structured_message = self._structure_docent_message(
-                response["content"], user_profile, gallery_item
+                raw_content, user_profile, gallery_item
             )
 
             return {
                 "success": True,
                 "message": structured_message,
-                "raw_content": response["content"],
+                "raw_content": raw_content,
                 "token_usage": response["token_usage"],
                 "processing_time": response["processing_time"],
                 "safety_check": {"is_safe": True},  # 추후 안전성 검증 추가
+                "length_info": {
+                    "character_count": len(raw_content),
+                    "within_limit": len(raw_content) <= 600
+                }
             }
 
         return {

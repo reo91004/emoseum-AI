@@ -38,6 +38,9 @@ class GalleryItem:
         message_reactions: List[str] = None,
         created_date: str = "",
         coping_style: str = "balanced",
+        # 새로운 감정 분석 필드들
+        normalized_all: Dict[str, float] = None,
+        emotion_categories: Dict[str, float] = None,
         # GPT 관련 새 필드들
         gpt_prompt_used: bool = True,
         gpt_prompt_tokens: int = 0,
@@ -62,6 +65,10 @@ class GalleryItem:
         self.created_date = created_date or datetime.now().isoformat()
         self.coping_style = coping_style
 
+        # 새로운 감정 분석 필드들
+        self.normalized_all = normalized_all or {}
+        self.emotion_categories = emotion_categories or {}
+
         # GPT 관련 메타데이터
         self.gpt_prompt_used = gpt_prompt_used
         self.gpt_prompt_tokens = gpt_prompt_tokens
@@ -79,6 +86,8 @@ class GalleryItem:
             "diary_text": self.diary_text,
             "emotion_keywords": self.emotion_keywords,
             "vad_scores": self.vad_scores,
+            "normalized_all": self.normalized_all,
+            "emotion_categories": self.emotion_categories,
             "reflection_prompt": self.reflection_prompt,
             "reflection_image_path": self.reflection_image_path,
             "artwork_title": self.artwork_title,
@@ -217,6 +226,8 @@ class GalleryManager:
         coping_style: str = "balanced",
         gpt_prompt_tokens: int = 0,
         prompt_generation_time: float = 0.0,
+        normalized_all: Dict[str, float] = None,
+        emotion_categories: Dict[str, float] = None,
     ) -> str:
         """새 미술관 아이템 생성 (ACT 1-2단계 완료 후)"""
 
@@ -236,6 +247,8 @@ class GalleryManager:
             "diary_text": diary_text,
             "emotion_keywords": emotion_keywords,
             "vad_scores": list(vad_scores),
+            "normalized_all": normalized_all or {},  # 28개 정규화된 감정 점수
+            "emotion_categories": emotion_categories or {},  # 카테고리별 합산 점수
             "reflection_prompt": reflection_prompt,
             "reflection_image_path": str(reflection_path),
             "artwork_title": "",
@@ -431,6 +444,8 @@ class GalleryManager:
             diary_text=doc.get("diary_text", ""),
             emotion_keywords=doc.get("emotion_keywords", []),
             vad_scores=tuple(doc.get("vad_scores", [0.0, 0.0, 0.0])),
+            normalized_all=doc.get("normalized_all", {}),
+            emotion_categories=doc.get("emotion_categories", {}),
             reflection_prompt=doc.get("reflection_prompt", ""),
             reflection_image_path=doc.get("reflection_image_path", ""),
             artwork_title=doc.get("artwork_title", ""),

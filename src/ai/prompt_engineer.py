@@ -196,7 +196,7 @@ class PromptEngineer:
         elif len(processed_prompt) < 250:
             logger.warning(f"프롬프트가 목표 길이(250자)보다 짧음: {len(processed_prompt)}자")
         else:
-            logger.info(f"프롬프트 길이 적절: {len(processed_prompt)}자").strip()
+            logger.info(f"프롬프트 길이 적절: {len(processed_prompt)}자")
 
         return processed_prompt
 
