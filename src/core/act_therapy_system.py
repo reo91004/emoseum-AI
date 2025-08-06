@@ -270,6 +270,8 @@ class ACTTherapySystem:
                 diary_text=diary_text,
                 emotion_keywords=emotion_analysis["keywords"],
                 vad_scores=emotion_analysis["vad_scores"],
+                normalized_all=emotion_analysis.get("normalized_all", {}),
+                emotion_categories=emotion_analysis.get("emotion_categories", {}),
                 reflection_prompt=reflection_result["prompt"],
                 reflection_image=reflection_result["image"],
                 coping_style=(
@@ -333,7 +335,9 @@ class ACTTherapySystem:
                     "generation_method": f"{analysis_service}_goEmotions",
                     "primary_emotion": analysis_result["primary_emotion"],
                     "emotional_intensity": analysis_result["emotional_intensity"],
-                    "top_emotions": analysis_result.get("top_emotions", {})
+                    "top_emotions": analysis_result.get("top_emotions", {}),
+                    "normalized_all": analysis_result.get("normalized_all", {}),
+                    "emotion_categories": analysis_result.get("emotion_categories", {})
                 }
             
             else:
@@ -349,6 +353,8 @@ class ACTTherapySystem:
                         "vad_scores": analysis_result.get("vad_scores", (0.0, 0.0, 0.0)),
                         "analysis_confidence": analysis_result.get("confidence", 0.8),
                         "generation_method": "gpt",
+                        "normalized_all": {},  # GPT 분석기는 28개 감정을 생성하지 않음
+                        "emotion_categories": {}  # GPT 분석기는 카테고리별 점수를 생성하지 않음
                     }
                 else:
                     raise RuntimeError(
@@ -428,6 +434,8 @@ class ACTTherapySystem:
                 # Colab 서비스 (래퍼 클래스)
                 generation_result = self.image_generator.generate_image(
                     prompt=reflection_prompt,
+                    width=512,
+                    height=512,
                     output_dir="data/gallery_images/reflection",
                     filename=f"reflection_{user.user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
                 )

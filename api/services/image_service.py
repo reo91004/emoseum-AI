@@ -41,12 +41,14 @@ class LocalGPUService(ImageGenerationService):
             # Extract parameters
             output_dir = kwargs.get("output_dir", "data/gallery_images/reflection")
             filename = kwargs.get("filename", "generated_image.png")
+            width = kwargs.get("width", 512)
+            height = kwargs.get("height", 512)
             
-            # Use existing image generator
+            # Use existing image generator with 1:1 aspect ratio
             result = self.image_generator.generate_image(
                 prompt=prompt,
-                output_dir=output_dir,
-                filename=filename
+                width=width,
+                height=height
             )
             
             if result and result.get("success"):
@@ -96,7 +98,12 @@ class ColabService(ImageGenerationService):
         try:
             import httpx
             
-            payload = {"prompt": prompt}
+            # 1:1 비율 강제 (512x512)
+            payload = {
+                "prompt": prompt,
+                "width": kwargs.get("width", 512),
+                "height": kwargs.get("height", 512)
+            }
             logger.info(f"Sending to Colab: {self.notebook_url}/generate")
             
             async with httpx.AsyncClient(timeout=120.0) as client:

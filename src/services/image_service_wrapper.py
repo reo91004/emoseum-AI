@@ -29,6 +29,8 @@ class ColabImageGenerator:
         prompt: str, 
         output_dir: str = "data/gallery_images/reflection",
         filename: str = "generated_image.png",
+        width: int = 512,
+        height: int = 512,
         **kwargs
     ) -> Dict[str, Any]:
         """Colab을 통해 이미지 생성"""
@@ -36,8 +38,12 @@ class ColabImageGenerator:
         try:
             logger.info(f"Colab을 통해 이미지 생성 중: {prompt[:50]}...")
             
-            # Colab 서버에 요청
-            payload = {"prompt": prompt}
+            # Colab 서버에 요청 (1:1 비율 강제)
+            payload = {
+                "prompt": prompt,
+                "width": width,
+                "height": height
+            }
             response = requests.post(
                 f"{self.notebook_url}/generate",
                 json=payload,

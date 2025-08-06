@@ -147,6 +147,8 @@ async def submit_diary_entry(
                     else "neutral"
                 ),
                 intensity=0.7,
+                normalized_all=result["emotion_analysis"].get("normalized_all"),
+                emotion_categories=result["emotion_analysis"].get("emotion_categories"),
             ),
             next_stage=JourneyStage.DEFUSION,  # 이미지가 이미 생성되었으므로 reflection 단계 건너뛰기
         )
@@ -358,7 +360,9 @@ async def explore_diary_emotions(
                 keywords=ea.get("keywords", []),
                 vad_scores=ea.get("vad_scores", [0.5, 0.5, 0.5]),
                 primary_emotion=ea.get("primary_emotion", "neutral"),
-                intensity=ea.get("confidence", 0.5)  # confidence를 intensity로 사용
+                intensity=ea.get("confidence", 0.5),  # confidence를 intensity로 사용
+                normalized_all=ea.get("normalized_all"),
+                emotion_categories=ea.get("emotion_categories")
             )
         
         return DiaryExplorationResponse(
@@ -422,7 +426,9 @@ async def generate_follow_up_question(
                 keywords=ea.get("keywords", []),
                 vad_scores=ea.get("vad_scores", [0.5, 0.5, 0.5]),
                 primary_emotion=ea.get("primary_emotion", "neutral"),
-                intensity=ea.get("confidence", 0.5)
+                intensity=ea.get("confidence", 0.5),
+                normalized_all=ea.get("normalized_all"),
+                emotion_categories=ea.get("emotion_categories")
             )
         
         return DiaryExplorationResponse(
@@ -534,6 +540,8 @@ async def get_session_details(
                         else "neutral"
                     ),
                     intensity=0.7,
+                    normalized_all=gallery_item.normalized_all,
+                    emotion_categories=gallery_item.emotion_categories,
                 )
                 if gallery_item.emotion_keywords
                 else None
