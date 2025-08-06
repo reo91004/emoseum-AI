@@ -107,12 +107,12 @@ class PromptEngineer:
 
             # 3. GPT API 호출 (GPTService에서 시스템/사용자 메시지 구성)
             gpt_response = self.gpt_service.generate_prompt_engineering_response(
-                diary_text=diary_text,
+                diary_text=diary_text,  # 전체 일기 전달 (맥락 보존)
                 emotion_keywords=emotion_keywords,
                 coping_style=coping_style,
                 visual_preferences=visual_preferences,
                 user_id=user_id,
-                max_tokens=100,
+                max_tokens=400,  # 250-350자 프롬프트 생성을 위한 충분한 토큰
                 temperature=0.7,
             )
 

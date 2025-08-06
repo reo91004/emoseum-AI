@@ -252,19 +252,14 @@ class DocentGPT:
             return user_profile.psychometric_results[0].coping_style
         return "balanced"
 
-    def _create_diary_excerpt(self, diary_text: str, max_length: int = 100) -> str:
-        """일기 내용 요약 추출"""
+    def _create_diary_excerpt(self, diary_text: str, max_length: int = None) -> str:
+        """일기 내용 전달 (자르지 않고 전체 전달)"""
         if not diary_text:
             return ""
-
-        if len(diary_text) <= max_length:
-            return diary_text
-
-        sentences = diary_text.split(". ")
-        if sentences and len(sentences[0]) <= max_length:
-            return sentences[0] + ("." if not sentences[0].endswith(".") else "")
-
-        return diary_text[:max_length] + "..."
+        
+        # 전체 일기를 그대로 반환 (맥락 보존)
+        # GPT는 전체 맥락을 이해해야 적절한 도슨트 메시지 생성 가능
+        return diary_text
 
     def _estimate_gallery_items(self, user_profile: Any) -> int:
         """갤러리 아이템 수 추정"""
