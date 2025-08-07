@@ -1,0 +1,470 @@
+# config/safety_rules.yaml
+# 이 파일은 애플리케이션의 치료적 안전성을 보장하기 위한 규칙과 키워드를 정의합니다.
+# 주로 src/utils/safety_validator.py에서 사용되어 사용자의 입력과 GPT의 응답을 검증합니다.
+
+# ==============================================================================
+# 치명적/경고 키워드 (Critical/Warning Keywords)
+# 사용 용도: src/utils/safety_validator.py
+# 설명: 사용자의 입력이나 GPT의 응답에서 심각한(critical) 또는 주의가 필요한(warning)
+#       키워드를 감지하는 데 사용됩니다. 'critical_keywords'에 포함된 단어가 발견되면
+#       즉각적인 안전 조치가 발동되며, 'warning_keywords'는 잠재적 위험을 나타냅니다.
+# ==============================================================================
+
+# 치료적 안전성 규칙 정의
+critical_keywords:
+  self_harm:
+    - "suicide"
+    - "kill myself"
+    - "self-harm"
+    - "cutting"
+    - "ending it all"
+    - "not worth living"
+    - "want to die"
+    - "better off dead"
+    - "hurt myself"
+    - "end my life"
+    - "self-injury"
+    - "자살"
+    - "죽고 싶다"
+    - "자해"
+    - "살 가치가 없다"
+  violence:
+    - "murder"
+    - "weapon"
+    - "attack"
+    - "assault"
+    - "hurt others"
+    - "violent thoughts"
+    - "kill someone"
+    - "harm others"
+    - "violence"
+    - "aggressive"
+    - "폭력"
+    - "살인"
+    - "공격"
+  extreme_despair:
+    - "hopeless forever"
+    - "worthless"
+    - "beyond help"
+    - "no point in living"
+    - "everyone hates me"
+    - "completely alone"
+    - "nothing matters"
+    - "can't go on"
+    - "give up everything"
+    - "절망적"
+    - "아무 의미 없다"
+    - "모든 것을 포기"
+
+warning_keywords:
+  negative_self_talk:
+    - "hate myself"
+    - "stupid"
+    - "failure"
+    - "useless"
+    - "pathetic"
+    - "disgusting"
+    - "worthless"
+    - "loser"
+    - "nobody"
+    - "자기혐오"
+    - "바보"
+    - "실패자"
+    - "쓸모없다"
+  isolation:
+    - "no one cares"
+    - "completely alone"
+    - "nobody understands"
+    - "invisible"
+    - "forgotten"
+    - "isolated"
+    - "cut off"
+    - "disconnected"
+    - "아무도 신경 안 써"
+    - "완전히 혼자"
+    - "아무도 이해 안 해"
+  hopelessness:
+    - "no hope"
+    - "pointless"
+    - "meaningless"
+    - "stuck forever"
+    - "never get better"
+    - "can't change"
+    - "doomed"
+    - "trapped"
+    - "희망 없다"
+    - "의미 없다"
+    - "절대 나아지지 않아"
+
+# ==============================================================================
+# 전문가 상담 권유 조건 (Professional Referral)
+# 사용 용도: src/utils/safety_validator.py
+# 설명: 사용자의 텍스트에 포함된 키워드를 기반으로 전문가 상담이 필요한 수준을
+#       (즉시, 긴급, 권장) 결정합니다. 각 수준별로 키워드, 조치, 메시지, 리소스가
+#       정의되어 있어 상황에 맞는 대응을 가능하게 합니다.
+# ==============================================================================
+professional_referral:
+  immediate:
+    description: "즉시 전문가 상담이 필요한 상황"
+    keywords:
+      - "suicide"
+      - "self-harm"
+      - "want to die"
+      - "plan to hurt"
+      - "ending everything"
+      - "kill myself"
+      - "자살 계획"
+      - "죽고 싶다"
+      - "자해하고 싶다"
+    action: "emergency_referral"
+    message: "당신의 안전이 가장 중요합니다. 지금 즉시 전문가의 도움을 받으시기 바랍니다."
+    resources:
+      - "National Suicide Prevention Lifeline: 988"
+      - "Crisis Text Line: Text HOME to 741741"
+      - "생명의전화: 1588-9191"
+      - "청소년전화: 1388"
+  urgent:
+    description: "빠른 시일 내 전문가 상담이 권장되는 상황"
+    keywords:
+      - "completely hopeless"
+      - "can't go on"
+      - "breaking down"
+      - "losing control"
+      - "dangerous thoughts"
+      - "overwhelming despair"
+      - "절망적"
+      - "무너지고 있다"
+      - "통제를 잃고 있다"
+    action: "urgent_referral"
+    message: "현재 상황이 매우 어려우신 것 같습니다. 며칠 내로 전문가와 상담받으시기를 강력히 권합니다."
+  recommended:
+    description: "전문가 상담이 도움이 될 것으로 판단되는 상황"
+    keywords:
+      - "struggling for weeks"
+      - "can't function"
+      - "getting worse"
+      - "no support"
+      - "crisis building"
+      - "몇 주째 힘들다"
+      - "기능하지 못한다"
+      - "점점 악화"
+    action: "general_referral"
+    message: "지속적인 어려움을 겪고 계시는군요. 전문가의 도움을 받아보시는 것을 고려해보시기 바랍니다."
+
+# ==============================================================================
+# 부적절한 응답 패턴 (Inappropriate Responses)
+# 사용 용도: src/utils/safety_validator.py
+# 설명: GPT가 생성한 응답에 포함되어서는 안 될 부적절한 패턴 목록입니다.
+#       지시적인 조언, 감정을 축소하는 표현, 의학적 조언 등을 필터링하여
+#       치료적으로 안전하고 지지적인 응답만 사용자에게 전달되도록 합니다.
+# ==============================================================================
+inappropriate_responses:
+  directive_advice:
+    - "you should"
+    - "you must"
+    - "you need to"
+    - "you have to"
+    - "just think positive"
+    - "get over it"
+    - "snap out of it"
+    - "it's all in your head"
+    - "others have it worse"
+    - "해야 한다"
+    - "무조건"
+    - "반드시"
+  minimizing:
+    - "it's not that bad"
+    - "you're overreacting"
+    - "calm down"
+    - "don't be dramatic"
+    - "stop being negative"
+    - "just relax"
+    - "그 정도는 아니야"
+    - "과민반응"
+    - "진정해"
+  medical_advice:
+    - "take medication"
+    - "stop your medication"
+    - "change your dose"
+    - "don't need therapy"
+    - "cure your depression"
+    - "fix your problems"
+    - "약을 먹어"
+    - "약을 끊어"
+    - "치료 필요 없어"
+
+# ==============================================================================
+# 치료적 품질 지표 (Therapeutic Quality)
+# 사용 용도: src/utils/safety_validator.py
+# 설명: GPT 응답의 치료적 품질을 평가하기 위한 긍정적, 공감적, 안전 관련 지표입니다.
+#       이 키워드들의 포함 여부를 바탕으로 응답의 품질 점수를 계산하고,
+#       일정 수준 이하일 경우 응답을 개선하거나 재생성하도록 유도합니다.
+# ==============================================================================
+therapeutic_quality:
+  positive_indicators:
+    emotional_support:
+      - "support"
+      - "understanding"
+      - "acceptance"
+      - "validation"
+      - "comfort"
+      - "care"
+      - "지지"
+      - "이해"
+      - "수용"
+    growth_orientation:
+      - "courage"
+      - "growth"
+      - "healing"
+      - "strength"
+      - "resilience"
+      - "progress"
+      - "용기"
+      - "성장"
+      - "치유"
+    empowerment:
+      - "hope"
+      - "possibility"
+      - "choice"
+      - "agency"
+      - "power"
+      - "control"
+      - "희망"
+      - "가능성"
+      - "선택"
+    connection:
+      - "together"
+      - "supported"
+      - "not alone"
+      - "community"
+      - "belonging"
+      - "함께"
+      - "지지받는"
+      - "혼자가 아닌"
+  empathetic_indicators:
+    acknowledgment:
+      - "understand"
+      - "acknowledge"
+      - "recognize"
+      - "see"
+      - "witness"
+      - "이해한다"
+      - "인정한다"
+      - "알아본다"
+    validation:
+      - "valid"
+      - "legitimate"
+      - "natural"
+      - "human"
+      - "understandable"
+      - "타당한"
+      - "정당한"
+      - "자연스러운"
+    normalization:
+      - "common"
+      - "normal"
+      - "shared"
+      - "universal"
+      - "typical"
+      - "일반적인"
+      - "정상적인"
+      - "공통적인"
+  safety_indicators:
+    protective_language:
+      - "safe"
+      - "protected"
+      - "secure"
+      - "held"
+      - "supported"
+      - "안전한"
+      - "보호받는"
+      - "안정된"
+    non_judgmental:
+      - "without judgment"
+      - "accepting"
+      - "open"
+      - "understanding"
+      - "비판단적"
+      - "수용적"
+      - "열린"
+
+# ==============================================================================
+# GPT 생성 콘텐츠 특별 검증 (GPT Content Validation)
+# 사용 용도: src/utils/safety_validator.py
+# 설명: GPT가 생성한 콘텐츠에 특정적인 문제들을 검증합니다.
+#       'inappropriate_ai_responses'는 AI로서의 한계를 드러내는 표현을,
+#       'template_leakage'는 프롬프트 템플릿이 그대로 노출되는 경우를,
+#       'coherence_issues'는 내용의 일관성 문제를 감지합니다.
+# ==============================================================================
+gpt_content_validation:
+  inappropriate_ai_responses:
+    - "as an AI"
+    - "I cannot"
+    - "I'm not able"
+    - "I don't have emotions"
+    - "I'm just a language model"
+    - "AI 모델로서"
+    - "저는 AI이므로"
+  template_leakage:
+    - "{{"
+    - "}}"
+    - "[PLACEHOLDER]"
+    - "[INSERT"
+    - "EXAMPLE_"
+    - "템플릿"
+    - "예시:"
+  coherence_issues:
+    - "contradictory"
+    - "incoherent"
+    - "repeated phrases"
+    - "nonsensical"
+    - "fragmented"
+    - "모순적"
+    - "일관성 없는"
+    - "의미 불명"
+
+# ==============================================================================
+# 콘텐츠 필터링 수준 (Content Filtering Levels)
+# 사용 용도: src/utils/safety_validator.py (참조용)
+# 설명: 콘텐츠 필터링의 강도를 정의합니다. 현재는 'strict' 수준을 기본으로 사용하며,
+#       치료적 맥락에 맞게 가장 엄격한 기준을 적용합니다. 향후 연구나 개발 목적으로
+#       필터링 수준을 조절할 수 있는 기반을 마련합니다.
+# ==============================================================================
+content_filtering_levels:
+  strict:
+    description: "가장 엄격한 필터링 (default for therapeutic context)"
+    blocks:
+      - "all critical keywords"
+      - "inappropriate AI responses"
+      - "template leakage"
+      - "coherence issues"
+    allows:
+      - "therapeutic processing of difficult emotions"
+      - "age-appropriate emotional expression"
+      - "growth-oriented language"
+  moderate:
+    description: "중간 수준 필터링"
+    blocks:
+      - "critical keywords only"
+      - "inappropriate AI responses"
+    allows:
+      - "honest emotional expression"
+      - "some challenging content for processing"
+  relaxed:
+    description: "최소한의 필터링 (research or development only)"
+    blocks:
+      - "immediate safety threats only"
+    allows:
+      - "full range of emotional expression"
+      - "research-appropriate content"
+
+# ==============================================================================
+# 연령별 안전성 지침 (Age-Specific Guidelines)
+# 사용 용도: src/utils/safety_validator.py (향후 확장용)
+# 설명: 사용자의 연령에 따라 추가적으로 고려해야 할 키워드와 메시지 조정 사항을
+#       정의합니다. 현재 코드에서는 직접적으로 사용되지 않지만, 향후 연령별 맞춤
+#       안전성 정책을 구현할 때 활용될 수 있습니다.
+# ==============================================================================
+age_specific_guidelines:
+  adolescent:
+    age_range: "13-17"
+    additional_keywords:
+      - "school pressure"
+      - "peer rejection"
+      - "identity crisis"
+      - "family conflict"
+      - "학교 스트레스"
+      - "따돌림"
+      - "정체성 혼란"
+    messaging_adjustments:
+      - "include parent/guardian communication"
+      - "school counselor referrals"
+      - "age-appropriate resources"
+  young_adult:
+    age_range: "18-25"
+    additional_keywords:
+      - "career pressure"
+      - "relationship stress"
+      - "independence anxiety"
+      - "future uncertainty"
+      - "취업 스트레스"
+      - "인간관계 어려움"
+      - "독립에 대한 불안"
+    messaging_adjustments:
+      - "adult mental health resources"
+      - "peer support groups"
+      - "career counseling options"
+
+# ==============================================================================
+# 문화적 고려사항 (Cultural Considerations)
+# 사용 용도: src/utils/safety_validator.py (향후 확장용)
+# 설명: 특정 문화권(예: 한국)에서 민감할 수 있는 주제와 그에 따른 메시지 조정
+#       방안을 정의합니다. 연령별 지침과 마찬가지로, 향후 다문화 지원 시
+#       안전성과 공감대를 높이는 데 사용될 수 있습니다.
+# ==============================================================================
+cultural_considerations:
+  korean_context:
+    sensitive_topics:
+      - "family honor"
+      - "academic pressure"
+      - "social conformity"
+      - "mental health stigma"
+      - "가족의 체면"
+      - "학업 압박"
+      - "사회적 동조"
+      - "정신건강 낙인"
+    adapted_messaging:
+      - "emphasize confidentiality"
+      - "normalize seeking help"
+      - "respect family dynamics"
+      - "culturally appropriate resources"
+
+# ==============================================================================
+# 응급 상황 프로토콜 (Emergency Protocols)
+# 사용 용도: src/utils/safety_validator.py (참조용)
+# 설명: 응급 상황 발생 시의 대응 절차를 정의합니다. 'immediate_risk'는
+#       자살 의도 등 즉각적인 위험 상황의 트리거와 조치를, 'escalation_pathway'는
+#       위험 수준에 따른 단계별 대응 절차를 명시합니다.
+# ==============================================================================
+emergency_protocols:
+  immediate_risk:
+    triggers:
+      - "suicide ideation with plan"
+      - "active self-harm intent"
+      - "psychotic symptoms"
+      - "substance abuse crisis"
+    actions:
+      - "display emergency resources immediately"
+      - "disable further AI interaction"
+      - "log incident for review"
+      - "provide crisis intervention contacts"
+  escalation_pathway:
+    level_1: "content warning and therapeutic redirect"
+    level_2: "professional referral recommendation"
+    level_3: "urgent care referral"
+    level_4: "emergency intervention protocol"
+
+# ==============================================================================
+# 품질 점수 계산 (Quality Scoring)
+# 사용 용도: src/utils/safety_validator.py, src/ai/curator_gpt.py (참조용)
+# 설명: 치료적 적절성, 안전성, 개인화 품질에 대한 점수 체계를 정의합니다.
+#       이를 통해 생성된 콘텐츠의 품질을 정량적으로 평가하고 관리할 수 있습니다.
+# ==============================================================================
+quality_scoring:
+  therapeutic_appropriateness:
+    excellent: 90-100
+    good: 75-89
+    acceptable: 60-74
+    concerning: 40-59
+    inappropriate: 0-39
+  safety_score:
+    safe: 80-100
+    caution: 60-79
+    warning: 40-59
+    danger: 0-39
+  personalization_quality:
+    highly_personalized: 85-100
+    well_personalized: 70-84
+    moderately_personalized: 55-69
+    minimally_personalized: 40-54
+    not_personalized: 0-39
