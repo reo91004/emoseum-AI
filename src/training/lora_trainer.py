@@ -16,6 +16,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
+from .quality_evaluator import QualityEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +84,9 @@ class PersonalizedLoRATrainer:
         self.pipeline = None
         self.lora_model = None
         self.can_train = PEFT_AVAILABLE and DIFFUSERS_AVAILABLE
+        
+        # 품질 평가기 초기화
+        self.quality_evaluator = QualityEvaluator()
 
         if self.can_train:
             self._initialize_pipeline()
@@ -120,47 +124,45 @@ class PersonalizedLoRATrainer:
             logger.error(f"파이프라인 초기화 실패: {e}")
             self.can_train = False
 
-    def prepare_gpt_training_data(
+    def prepare_quality_based_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """GPT 메타데이터를 포함한 훈련 데이터 준비"""
+        """품질 메트릭 기반 훈련 데이터 준비 (사용자 반응 없이)"""
 
         training_data = []
 
         for item in gallery_items:
-            # 완성된 아이템 + GPT 메타데이터가 있는 것만 사용
+            # 완성된 아이템만 사용
             if (
                 item.get("artwork_title")
                 and item.get("docent_message")
                 and item.get("reflection_image_path")
                 and Path(item["reflection_image_path"]).exists()
+                and item.get("reflection_prompt")
             ):
 
                 # GPT 메타데이터 추출
                 gpt_metadata = self._extract_gpt_metadata(item)
-
-                # 도슨트 메시지에 대한 사용자 반응 분석
-                message_reactions = item.get("message_reactions", [])
-                reaction_score = self._calculate_reaction_score(message_reactions)
-
-                # GPT 품질 기반 필터링 - 높은 품질의 GPT 응답만 학습 데이터로 사용
-                if (
-                    reaction_score >= 3.5
-                    and gpt_metadata["prompt_quality_score"] >= 0.7
-                    and gpt_metadata["curator_quality_score"] >= 0.7
-                ):
+                
+                # 종합 품질 점수 계산
+                quality_result = self.quality_evaluator.calculate_comprehensive_quality_score(
+                    item, gpt_metadata
+                )
+                
+                # 품질 기준 필터링 (0.4 이상)
+                if quality_result['total_score'] >= 0.4:
                     training_sample = {
                         "prompt": item["reflection_prompt"],
                         "image_path": item["reflection_image_path"],
-                        "reaction_score": reaction_score,
+                        "quality_score": quality_result['total_score'],
+                        "training_weight": self.quality_evaluator.get_training_weight(quality_result['total_score']),
                         "artwork_title": item["artwork_title"],
                         "docent_message": item["docent_message"],
-                        "message_reactions": message_reactions,
-                        # tags 제거됨
                         "emotion_keywords": item.get("emotion_keywords", []),
                         "vad_scores": item.get("vad_scores", [0, 0, 0]),
-                        # GPT 관련 데이터 추가
+                        # 품질 관련 데이터 추가
                         "gpt_metadata": gpt_metadata,
+                        "quality_metadata": quality_result,
                         "gpt_prompt_used": item.get("gpt_prompt_used", True),
                         "gpt_curator_used": item.get("gpt_curator_used", True),
                         "prompt_generation_time": item.get(
@@ -173,18 +175,27 @@ class PersonalizedLoRATrainer:
 
                     training_data.append(training_sample)
 
+        # 품질 분석 수행
+        quality_analysis = self.quality_evaluator.analyze_training_data_quality(
+            [item for item in gallery_items if item.get("reflection_prompt")]
+        )
+        
         logger.info(
-            f"LoRA 훈련 데이터 준비 완료: {len(training_data)}개 샘플 (총 {len(gallery_items)}개 중)"
+            f"품질 기반 LoRA 훈련 데이터 준비 완료: {len(training_data)}개 샘플 (총 {len(gallery_items)}개 중)"
+        )
+        logger.info(
+            f"평균 품질 점수: {quality_analysis.get('average_quality', 0):.3f}, "
+            f"고품질 비율: {quality_analysis.get('quality_distribution_percent', {}).get('high', 0):.1f}%"
         )
         return training_data
 
     def prepare_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """갤러리 아이템을 LoRA 훈련 데이터로 변환 (기존 메서드 + GPT 연동)"""
+        """갤러리 아이템을 LoRA 훈련 데이터로 변환 (품질 기반)"""
 
-        # GPT 데이터 준비 사용
-        return self.prepare_gpt_training_data(gallery_items)
+        # 품질 기반 데이터 준비 사용
+        return self.prepare_quality_based_training_data(gallery_items)
 
     def _extract_gpt_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """갤러리 아이템에서 GPT 메타데이터 추출"""
@@ -411,36 +422,26 @@ class PersonalizedLoRATrainer:
 
         return weighted_data
 
-    def _calculate_reaction_score(self, reactions: List[str]) -> float:
-        """사용자 반응 점수 계산 (1-5 척도)"""
-        if not reactions:
-            return 3.0  # 기본 중성 점수
-
-        # 반응 유형별 점수
-        reaction_scores = {
-            "like": 4.0,
-            "save": 4.5,
-            "share": 5.0,
-            "dismiss": 2.0,
-            "skip": 2.5,
-        }
-
-        scores = []
-        for reaction in reactions:
-            score = reaction_scores.get(reaction, 3.0)
-            scores.append(score)
-
-        # 가중 평균 (최근 반응에 더 높은 가중치)
-        if len(scores) == 1:
-            return scores[0]
-
-        weights = [
-            1.0 + i * 0.2 for i in range(len(scores))
-        ]  # 최근 반응일수록 높은 가중치
-        weighted_sum = sum(score * weight for score, weight in zip(scores, weights))
-        weight_sum = sum(weights)
-
-        return weighted_sum / weight_sum
+    def _calculate_quality_based_score(self, training_sample: Dict[str, Any]) -> float:
+        """품질 기반 훈련 점수 계산 (0-1 척도)"""
+        
+        # 종합 품질 점수를 기본으로 사용
+        base_score = training_sample.get('quality_score', 0.5)
+        
+        # 추가 보너스 요소들
+        gpt_metadata = training_sample.get('gpt_metadata', {})
+        
+        # 개인화 수준 보너스
+        personalization_bonus = gpt_metadata.get('personalization_score', 0.0) * 0.1
+        
+        # 안전성 보너스
+        safety_level = gpt_metadata.get('safety_level', 'medium')
+        safety_bonus = 0.05 if safety_level == 'safe' else 0.0
+        
+        # 최종 점수
+        final_score = min(1.0, base_score + personalization_bonus + safety_bonus)
+        
+        return final_score
 
     def train_user_lora(
         self, user_id: str, training_data: List[Dict[str, Any]]

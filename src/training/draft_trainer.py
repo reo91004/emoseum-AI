@@ -18,6 +18,8 @@ from typing import Dict, List, Tuple, Optional, Any
 import numpy as np
 import random
 
+from .quality_evaluator import QualityEvaluator
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -46,79 +48,51 @@ class DRaFTRewardModel:
             nn.Sigmoid(),
         ).to(device)
 
-        # 보상 계산 가중치 (GPT 요소 추가)
+        # GPT 품질 메트릭 기반 보상 계산 가중치
         self.reward_weights = {
-            "message_reaction_score": 0.35,  # 도슨트 메시지 반응 점수
-            "artwork_title_sentiment": 0.25,  # 방명록 감정 점수
-            "gpt_quality_score": 0.20,  # GPT 생성 품질 점수
-            "personalization_score": 0.10,  # 개인화 수준
-            "visual_quality": 0.05,  # 시각적 품질
-            "user_preference": 0.05,  # 사용자 선호도 일치
+            "gpt_quality_score": 0.50,  # GPT 생성 품질 점수
+            "emotion_style_match": 0.30,  # 감정-스타일 일치도
+            "therapeutic_score": 0.20,  # 치료적 키워드 점수
         }
 
-    def calculate_gpt_enhanced_reward(
+    def calculate_quality_based_reward(
         self,
-        image_features: torch.Tensor,
-        message_reaction_score: float,
-        artwork_title_sentiment: float,
-        gpt_metadata: Dict[str, Any],
-        user_preferences: Dict[str, float],
+        quality_result: Dict[str, float],
+        image_features: torch.Tensor = None,
     ) -> torch.Tensor:
-        """GPT 메타데이터를 활용한 종합 보상 계산"""
+        """품질 평가 결과를 활용한 종합 보상 계산"""
 
-        # 1. 메시지 반응 기반 보상 (1-5 -> 0-1)
-        message_reward = (message_reaction_score - 1) / 4
+        # 1. GPT 품질 점수 보상
+        gpt_quality_reward = quality_result['gpt_quality_score']
 
-        # 2. 방명록 감정 점수 기반 보상 (1-5 -> 0-1)
-        sentiment_reward = (artwork_title_sentiment - 1) / 4
+        # 2. 감정-스타일 일치도 보상
+        emotion_style_reward = quality_result['emotion_style_match']
 
-        # 3. GPT 품질 점수 보상
-        gpt_quality_reward = self._calculate_gpt_quality_reward(gpt_metadata)
+        # 3. 치료적 키워드 점수 보상
+        therapeutic_reward = quality_result['therapeutic_score']
 
-        # 4. 개인화 점수 보상
-        personalization_reward = gpt_metadata.get("personalization_score", 0.0)
-
-        # 5. 시각적 품질 보상 (신경망으로 추정)
-        visual_reward = self.reward_net(image_features).squeeze()
-
-        # 6. 사용자 선호도 일치 보상
-        preference_reward = self._calculate_preference_reward(user_preferences)
-
-        # 가중 평균
+        # 가중 평균 (QualityEvaluator와 동일한 비율)
         total_reward = (
-            self.reward_weights["message_reaction_score"] * message_reward
-            + self.reward_weights["artwork_title_sentiment"] * sentiment_reward
-            + self.reward_weights["gpt_quality_score"] * gpt_quality_reward
-            + self.reward_weights["personalization_score"] * personalization_reward
-            + self.reward_weights["visual_quality"] * visual_reward
-            + self.reward_weights["user_preference"] * preference_reward
+            self.reward_weights["gpt_quality_score"] * gpt_quality_reward +
+            self.reward_weights["emotion_style_match"] * emotion_style_reward +
+            self.reward_weights["therapeutic_score"] * therapeutic_reward
         )
 
-        return torch.clamp(total_reward, 0.0, 1.0)
+        return torch.clamp(torch.tensor(total_reward), 0.0, 1.0)
 
     def calculate_reward(
         self,
-        image_features: torch.Tensor,
-        message_reaction_score: float,
-        artwork_title_sentiment: float,
-        user_preferences: Dict[str, float],
+        gallery_item: Dict[str, Any],
+        gpt_metadata: Dict[str, Any] = None,
     ) -> torch.Tensor:
-        """기존 보상 계산 (하위 호환성)"""
-
-        # 기본 GPT 메타데이터로 호출
-        default_gpt_metadata = {
-            "prompt_quality_score": 0.5,
-            "curator_quality_score": 0.5,
-            "personalization_score": 0.0,
-        }
-
-        return self.calculate_gpt_enhanced_reward(
-            image_features,
-            message_reaction_score,
-            artwork_title_sentiment,
-            default_gpt_metadata,
-            user_preferences,
+        """품질 평가기를 사용한 보상 계산"""
+        
+        quality_evaluator = QualityEvaluator()
+        quality_result = quality_evaluator.calculate_comprehensive_quality_score(
+            gallery_item, gpt_metadata
         )
+        
+        return self.calculate_quality_based_reward(quality_result)
 
     def _calculate_gpt_quality_reward(self, gpt_metadata: Dict[str, Any]) -> float:
         """GPT 품질 기반 보상 계산"""
@@ -223,14 +197,19 @@ class DRaFTPlusTrainer:
             logger.error(f"DRaFT+ 컴포넌트 초기화 실패: {e}")
             self.can_train = False
 
-    def prepare_gpt_reaction_training_data(
+    def prepare_quality_based_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """GPT 메시지 반응 기반 훈련 데이터 준비"""
-
+        """품질 메트릭 기반 훈련 데이터 준비 (사용자 반응 없이)"""
+        
+        quality_evaluator = QualityEvaluator()
+        filtered_items = quality_evaluator.filter_training_data_by_quality(
+            gallery_items, min_quality_threshold=0.3  # DRaFT는 더 낮은 임계값 사용
+        )
+        
         training_data = []
 
-        for item in gallery_items:
+        for item in filtered_items:
             # 완성된 아이템만 사용 (reflection + artwork_title + docent_message)
             if (
                 item.get("artwork_title")
@@ -240,31 +219,23 @@ class DRaFTPlusTrainer:
 
                 # GPT 메타데이터 추출
                 gpt_metadata = self._extract_gpt_metadata(item)
-
-                # 방명록 감정 점수 분석
-                artwork_title_sentiment = self._analyze_artwork_title_sentiment(
-                    item["artwork_title"]
+                
+                # 품질 메트릭 계산
+                quality_result = quality_evaluator.calculate_comprehensive_quality_score(
+                    item, gpt_metadata
                 )
 
-                # 도슨트 메시지 반응 점수 계산
-                message_reactions = item.get("message_reactions", [])
-                reaction_score = self._calculate_message_reaction_score(
-                    message_reactions
-                )
-
-                # GPT 품질 기반 필터링 - DRaFT+는 모든 데이터를 사용하되 보상 차등화
                 training_sample = {
                     "reflection_prompt": item["reflection_prompt"],
                     "docent_message": item["docent_message"],
-                    "artwork_title_sentiment": artwork_title_sentiment,
-                    "message_reaction_score": reaction_score,
-                    "message_reactions": message_reactions,
                     "artwork_title": item["artwork_title"],
                     "emotion_keywords": item.get("emotion_keywords", []),
                     "vad_scores": item.get("vad_scores", [0, 0, 0]),
                     "user_id": item["user_id"],
                     "coping_style": item.get("coping_style", "balanced"),
-                    # GPT 관련 데이터 추가
+                    # 품질 메트릭 데이터 추가
+                    "quality_result": quality_result,
+                    "training_weight": item.get("training_weight", 1.0),
                     "gpt_metadata": gpt_metadata,
                     "gpt_prompt_used": item.get("gpt_prompt_used", True),
                     "gpt_curator_used": item.get("gpt_curator_used", True),
@@ -276,16 +247,15 @@ class DRaFTPlusTrainer:
 
                 training_data.append(training_sample)
 
-        logger.info(f"DRaFT+ 훈련 데이터 준비 완료: {len(training_data)}개 샘플")
+        logger.info(f"DRaFT+ 품질 기반 훈련 데이터 준비 완료: {len(training_data)}개 샘플")
         return training_data
 
     def prepare_training_data(
         self, gallery_items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
-        """갤러리 아이템을 DRaFT+ 훈련 데이터로 변환 (GPT 연동)"""
+        """갤러리 아이템을 DRaFT+ 훈련 데이터로 변환 (품질 메트릭 기반)"""
 
-        # GPT 반응 데이터 활용 추가
-        return self.prepare_gpt_reaction_training_data(gallery_items)
+        return self.prepare_quality_based_training_data(gallery_items)
 
     def _extract_gpt_metadata(self, item: Dict[str, Any]) -> Dict[str, Any]:
         """갤러리 아이템에서 GPT 메타데이터 추출"""
@@ -655,7 +625,7 @@ class DRaFTPlusTrainer:
                 random.shuffle(shuffled_data)
 
                 for step, sample in enumerate(shuffled_data):
-                    loss, reward = self._gpt_enhanced_draft_training_step(sample)
+                    loss, reward = self._quality_based_draft_training_step(sample)
 
                     # 그래디언트 누적
                     loss = loss / self.training_config["gradient_accumulation_steps"]
@@ -904,50 +874,28 @@ class DRaFTPlusTrainer:
             ),
         }
 
-    def _gpt_enhanced_draft_training_step(
+    def _quality_based_draft_training_step(
         self, sample: Dict[str, Any]
     ) -> Tuple[torch.Tensor, float]:
-        """GPT 메타데이터를 활용한 DRaFT+ 훈련 스텝"""
+        """품질 메트릭을 활용한 DRaFT+ 훈련 스텝"""
 
         # 기본 훈련 스텝
-        loss, reward = self._draft_training_step(sample)
-
-        # GPT 메타데이터 기반 손실 조정
-        gpt_metadata = sample.get("gpt_metadata", {})
-
-        # 품질 기반 학습률 조정
-        combined_quality = (
-            gpt_metadata.get("prompt_quality_score", 0.5)
-            + gpt_metadata.get("curator_quality_score", 0.5)
-        ) / 2
-
-        # 개인화 수준 기반 조정
-        personalization_score = gpt_metadata.get("personalization_score", 0.0)
-
-        # 치료적 품질 기반 조정
-        therapeutic_quality = gpt_metadata.get("therapeutic_quality", "medium")
-        therapeutic_multiplier = {"high": 1.2, "medium": 1.0, "low": 0.8}.get(
-            therapeutic_quality, 1.0
-        )
-
-        # 종합 조정 계수
-        quality_multiplier = 0.7 + (combined_quality * 0.6)  # 0.7 ~ 1.3 범위
-        personalization_multiplier = 1.0 + (
-            personalization_score * 0.3
-        )  # 1.0 ~ 1.3 범위
-
-        # 최종 손실 조정
-        adjusted_loss = (
-            loss
-            * quality_multiplier
-            * personalization_multiplier
-            * therapeutic_multiplier
-        )
-
-        # 보상도 조정
-        adjusted_reward = reward * therapeutic_multiplier
-
-        return adjusted_loss, adjusted_reward
+        loss, base_reward = self._draft_training_step(sample)
+        
+        # 품질 메트릭 기반 손실 조정
+        quality_result = sample.get("quality_result", {})
+        training_weight = sample.get("training_weight", 1.0)
+        
+        # 품질 점수를 훈련 가중치로 사용
+        total_quality = quality_result.get("total_score", 0.5)
+        
+        # 최종 손실 조정 (높은 품질일수록 더 큰 가중치)
+        adjusted_loss = loss * training_weight * (0.5 + total_quality * 0.8)
+        
+        # 보상도 품질 점수로 사용
+        quality_reward = total_quality
+        
+        return adjusted_loss, quality_reward
 
     def _draft_training_step(
         self, sample: Dict[str, Any]
@@ -996,30 +944,19 @@ class DRaFTPlusTrainer:
         # 기본 MSE 손실
         mse_loss = nn.functional.mse_loss(noise_pred, noise, reduction="mean")
 
-        # 보상 계산
+        # 보상 계산 (품질 메트릭 기반)
         with torch.no_grad():
-            # 이미지 특성을 간단히 노이즈 예측에서 추출
-            image_features = noise_pred.flatten().unsqueeze(0)
-            if image_features.shape[1] > 1024:
-                image_features = image_features[:, :1024]
-            elif image_features.shape[1] < 1024:
-                padding = torch.zeros(
-                    1, 1024 - image_features.shape[1], device=self.device
-                )
-                image_features = torch.cat([image_features, padding], dim=1)
-
-            # 사용자 선호도 (간단한 더미 데이터)
-            user_preferences = {"overall": 0.5}
-
-            # GPT 메타데이터 활용
+            # 전체 아이템을 보상 계산에 사용
+            gallery_item = {
+                "reflection_prompt": sample["reflection_prompt"],
+                "docent_message": sample["docent_message"], 
+                "artwork_title": sample["artwork_title"],
+                "emotion_keywords": sample["emotion_keywords"]
+            }
+            
             gpt_metadata = sample.get("gpt_metadata", {})
-
-            reward = self.reward_model.calculate_gpt_enhanced_reward(
-                image_features=image_features,
-                message_reaction_score=sample["message_reaction_score"],
-                artwork_title_sentiment=sample["artwork_title_sentiment"],
-                gpt_metadata=gpt_metadata,
-                user_preferences=user_preferences,
+            reward = self.reward_model.calculate_reward(
+                gallery_item, gpt_metadata
             ).item()
 
         # DRaFT+ 정책 손실: -log π(a|s) * (R - baseline)
