@@ -93,7 +93,9 @@ GALLERY_ITEM_SCHEMA = {
         "keywords": List[str],
         "vad_scores": List[float],  # [valence, arousal, dominance]
         "primary_emotion": str,
-        "intensity": float
+        "intensity": float,
+        "normalized_all": Optional[Dict[str, float]],  # 28개 감정 정규화 점수
+        "emotion_categories": Optional[Dict[str, float]]  # 카테고리별 감정 점수
     },
     "generated_image": {
         "image_path": str,

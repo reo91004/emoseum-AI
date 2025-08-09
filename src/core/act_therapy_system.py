@@ -14,6 +14,7 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Any
+from bson.json_util import dumps
 
 from ..managers.user_manager import UserManager, PsychometricResult
 from ..therapy.prompt_architect import PromptArchitect
@@ -260,10 +261,21 @@ class ACTTherapySystem:
             if not user:
                 raise ValueError(f"사용자를 찾을 수 없습니다: {user_id}")
 
-            # GPT를 통한 이미지 생성
-            reflection_result = self._create_gpt_reflection_image(
-                user, emotion_analysis, diary_text
-            )
+            # 이미지 생성 시도 (실패 시 기본값 사용)
+            try:
+                reflection_result = self._create_gpt_reflection_image(
+                    user, emotion_analysis, diary_text
+                )
+            except Exception as img_error:
+                logger.warning(f"이미지 생성 실패, 기본값 사용: {img_error}")
+                reflection_result = {
+                    "prompt": "Reflection on emotions",
+                    "image": None,
+                    "image_path": "/therapy/images/default.png",
+                    "generation_time": 0.0,
+                    "prompt_tokens": 0,
+                    "safety_validated": True,
+                }
 
             gallery_item_id = self.gallery_manager.create_gallery_item(
                 user_id=user_id,
@@ -282,6 +294,9 @@ class ACTTherapySystem:
                 gpt_prompt_tokens=reflection_result.get("prompt_tokens", 0),
                 prompt_generation_time=reflection_result.get("generation_time", 0.0),
             )
+            
+            # Emoseum-server에 데이터 동기화
+            self._sync_to_emoseum_server(gallery_item_id, user_id, diary_text, emotion_analysis, reflection_result)
 
             journey_result = {
                 "user_id": user_id,
@@ -309,6 +324,122 @@ class ACTTherapySystem:
         except Exception as e:
             logger.error(f"감정 여정 처리 실패: {e}")
             raise RuntimeError(f"감정 여정 처리에 실패했습니다: {e}")
+    
+    def _sync_to_emoseum_server(self, gallery_item_id, user_id, diary_text, emotion_analysis, reflection_result):
+        """Emoseum-server에 갤러리 아이템 데이터 동기화"""
+        try:
+            import requests
+            
+            gallery_item = self.gallery_manager.get_gallery_item(gallery_item_id)
+            if not gallery_item:
+                return
+            
+            sync_data = {
+                "user_id": user_id,
+                "item_id": gallery_item_id,
+                "diary_text": diary_text,
+                "emotion_analysis": {
+                    "keywords": emotion_analysis["keywords"],
+                    "vad_scores": emotion_analysis["vad_scores"],
+                    "primary_emotion": emotion_analysis.get("primary_emotion", "neutral"),
+                    "intensity": emotion_analysis.get("emotional_intensity", 0.5),
+                    "normalized_all": emotion_analysis.get("normalized_all", {}),
+                    "emotion_categories": emotion_analysis.get("emotion_categories", {})
+                },
+                "generated_image": {
+                    "image_path": reflection_result.get("image_path", ""),
+                    "prompt_used": reflection_result.get("prompt", ""),
+                    "generation_metadata": {
+                        "service_used": "ai_system",
+                        "generation_time": reflection_result.get("generation_time", 0.0),
+                        "model_version": "stable-diffusion-v1-5"
+                    }
+                },
+                "artwork_title": {
+                    "title": gallery_item.artwork_title or "Untitled",
+                    "reflection": ""
+                },
+                "docent_message": {
+                    "message": gallery_item.docent_message or "",
+                    "message_type": "encouragement",
+                    "personalization_data": {}
+                },
+                "journey_stage": "reflection",
+                "is_completed": False
+            }
+            
+            emoseum_server_url = os.getenv("EMOSEUM_SERVER_URL", "http://localhost:3000")
+            response = requests.post(
+                f"{emoseum_server_url}/ai-sync/gallery-item",
+                json=sync_data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"Emoseum-server 동기화 성공: {gallery_item_id}")
+            else:
+                logger.warning(f"Emoseum-server 동기화 실패: {response.status_code}")
+                
+        except Exception as e:
+            logger.warning(f"Emoseum-server 동기화 오류: {e}")
+    
+    def _sync_artwork_title_to_emoseum_server(self, gallery_item_id, artwork_title, artwork_description):
+        """작품 제목 업데이트를 Emoseum-server에 동기화"""
+        try:
+            import requests
+            
+            update_data = {
+                "artwork_title": {
+                    "title": artwork_title,
+                    "reflection": artwork_description or ""
+                },
+                "journey_stage": "defusion",
+                "is_completed": False
+            }
+            
+            emoseum_server_url = os.getenv("EMOSEUM_SERVER_URL", "http://localhost:3000")
+            response = requests.patch(
+                f"{emoseum_server_url}/ai-sync/gallery-item/{gallery_item_id}",
+                json=update_data,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                logger.info(f"작품 제목 동기화 성공: {gallery_item_id}")
+            else:
+                logger.warning(f"작품 제목 동기화 실패: {response.status_code}")
+                
+        except Exception as e:
+            logger.warning(f"작품 제목 동기화 오류: {e}")
+    
+    def _sync_docent_message_to_emoseum_server(self, gallery_item_id: str):
+        try:
+            # 1. MongoDB에서 해당 gallery item 전체 조회
+            gallery_item = self.db.gallery_items.find_one({"_id": ObjectId(gallery_item_id)})
+            if not gallery_item:
+                raise Exception("Gallery item not found")
+
+            # 2. JSON 직렬화 (ObjectId 포함 처리 가능)
+            gallery_item_json = dumps(gallery_item)  # bson.json_util 사용 필수
+
+            # 3. Emoseum-server로 PATCH 요청
+            emoseum_url = f"{self.config.EMOSEUM_SERVER_URL}/ai-sync/gallery-item/{gallery_item_id}"
+            response = requests.patch(
+                emoseum_url,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.config.EMOSEUM_API_KEY}"  # 필요한 경우
+                },
+                data=gallery_item_json
+            )
+
+            if response.status_code != 200:
+                raise Exception(f"Emoseum sync failed: {response.status_code}, {response.text}")
+
+            print("Emoseum-server sync 성공")
+        except Exception as e:
+            print(f"Docent sync error: {e}")
+
 
     def _analyze_emotion_with_gpt(
         self, diary_text: str, user_id: str = "anonymous"
@@ -397,6 +528,8 @@ class ACTTherapySystem:
         coping_style = "balanced"
         if user.psychometric_results:
             coping_style = user.psychometric_results[0].coping_style
+        
+        logger.info(f"사용자 {user.user_id}의 coping_style: {coping_style}")
 
         self.prompt_architect.set_diary_context(diary_text)
 
@@ -510,6 +643,9 @@ class ACTTherapySystem:
             )
         )
 
+        # Emoseum-server에 제목 업데이트 동기화
+        self._sync_artwork_title_to_emoseum_server(gallery_item_id, artwork_title, artwork_description)
+
         artwork_title_result = {
             "user_id": user_id,
             "gallery_item_id": gallery_item_id,
@@ -572,6 +708,30 @@ class ACTTherapySystem:
                     "safety_validated": True,
                 },
             }
+
+            # Emoseum-server에 도슨트 메시지 동기화 (전체 AI JSON 포함)
+            self._sync_docent_message_to_emoseum_server(gallery_item_id)
+            
+            # AI DB에 저장된 데이터 전체 확인
+            try:
+                from bson.json_util import dumps
+                db = self.mongodb_client.get_database()
+                saved_item = db["gallery_items"].find_one({"item_id": gallery_item_id})
+                print(f"[DEBUG] AI DB 전체 데이터:")
+                if saved_item:
+                    print(dumps(saved_item, indent=2))
+                else:
+                    print("ITEM_NOT_FOUND")
+            except Exception as e:
+                print(f"[DEBUG] DB 조회 오류: {e}")
+            
+            # 도슨트 데이터 동기화
+            from .docent_sync import sync_docent_data_to_server
+            sync_docent_data_to_server(gallery_item_id, docent_message, self.gallery_manager)
+            
+            # AI JSON 데이터 동기화
+            from .ai_json_sync import sync_ai_json_to_server
+            sync_ai_json_to_server(gallery_item_id)
 
             logger.info(f"도슨트 메시지 생성 완료: 아이템 {gallery_item_id}")
             return docent_result
