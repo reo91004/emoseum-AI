@@ -499,6 +499,12 @@ class GPTService:
 
         # YAML에서 프롬프트 엔지니어링 시스템 메시지 가져오기
         prompt_data = self.prompt_templates["prompt_engineering"]
+        
+        # coping_style 키가 없으면 기본값 사용
+        if coping_style not in prompt_data:
+            logger.warning(f"YAML에서 coping_style '{coping_style}'을 찾을 수 없음, 'balanced' 사용")
+            coping_style = "balanced"
+        
         base_message = prompt_data[coping_style]["system_message"]
 
         # 추가 컨텍스트 정보 첨부
@@ -523,6 +529,12 @@ Coping style: {coping_style}"""
 
         # YAML에서 도슨트 시스템 메시지 가져오기
         docent_data = self.prompt_templates["docent_messages"]
+        
+        # coping_style 키가 없으면 기본값 사용
+        if coping_style not in docent_data:
+            logger.warning(f"YAML에서 coping_style '{coping_style}'을 찾을 수 없음, 'balanced' 사용")
+            coping_style = "balanced"
+        
         base_message = docent_data[coping_style]["system_message"]
 
         # 추가 컨텍스트 정보 첨부

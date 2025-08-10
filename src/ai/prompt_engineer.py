@@ -87,6 +87,9 @@ class PromptEngineer:
         """일기 내용을 이미지 프롬프트로 변환 (메인 메서드)"""
 
         try:
+            # 디버그 로그 추가
+            logger.info(f"프롬프트 생성 시작 - coping_style: {coping_style}, emotion_keywords: {emotion_keywords}")
+            
             # 1. 입력 데이터 검증
             if not diary_text or not diary_text.strip():
                 raise ValueError("일기 텍스트가 비어있습니다")
@@ -105,6 +108,12 @@ class PromptEngineer:
                     "metadata": {},
                 }
 
+            # coping_style 검증 및 기본값 설정
+            valid_coping_styles = ["avoidance_oriented", "task_oriented", "balanced"]
+            if coping_style not in valid_coping_styles:
+                logger.warning(f"잘못된 coping_style: {coping_style}, 기본값 'balanced' 사용")
+                coping_style = "balanced"
+            
             # 3. GPT API 호출 (GPTService에서 시스템/사용자 메시지 구성)
             gpt_response = self.gpt_service.generate_prompt_engineering_response(
                 diary_text=diary_text,  # 전체 일기 전달 (맥락 보존)
