@@ -31,7 +31,6 @@ def main():
     # Run server
     uvicorn.run(
         "api.main:app",
-        host="0.0.0.0",  # 모든 인터페이스에서 접속 허용
         host=settings.api_host,
         port=settings.api_port,
         reload=settings.environment == "development",
