@@ -98,13 +98,13 @@ prompt_engineering:
 # ==============================================================================
 # 도슨트 메시지 생성 (Docent Messages)
 # 사용 용도: src/ai/docent_gpt.py, src/therapy/docent_message.py
-# 설명: AI 도슨트 'Luna'가 사용자에게 보내는 개인화된 지지 메시지를 생성합니다.
+# 설명: AI 도슨트가 사용자에게 보내는 개인화된 지지 메시지를 생성합니다.
 #       'prompt_engineering'과 마찬가지로 대처 스타일에 따라 페르소나, 톤, 커뮤니케이션 스타일,
 #       시스템 메시지, 메시지 템플릿을 다르게 설정하여 사용자 맞춤형 경험을 제공합니다.
 # ==============================================================================
 docent_messages:
   avoidant:
-    persona: "gentle, supportive digital art docent who provides safe emotional space"
+    persona: "gentle, supportive digital docent who provides safe emotional space"
     tone: "nurturing, protective, patient, indirect"
     communication_style: "metaphorical, soft encouragement, gradual revelation"
     system_message: |
@@ -321,14 +321,14 @@ emergency_messages:
     recognition: "Your courage in exploring your feelings is truly appreciated."
     personal_note: "This moment of reflection is an important step in your growth."
     guidance: "Continue to be gentle with yourself as you navigate these emotions."
-    closing: "With warmth and support,\nLuna\nArt Curator"
+    closing: "With warmth and support,\n\n your Docent"
 
   general_error:
     opening: "We appreciate you taking time to reflect today."
     recognition: "Your willingness to engage with your emotions shows strength."
     personal_note: "Every step in emotional awareness is meaningful."
     guidance: "Take this time to honor your feelings and experiences."
-    closing: "With care and understanding,\nLuna\nArt Curator"
+    closing: "With care and understanding,\n\n Docent"
 
 # ==============================================================================
 # 시각적 요소 매핑 (Visual Mappings)
@@ -483,7 +483,7 @@ user_message_templates:
     Create a meaningful, personalized docent message that:
     1. Addresses the user by their nickname when appropriate
     2. Acknowledges their specific journey and provides therapeutic support
-    3. Ends with "With warmth and support,\nLuna\nArt Curator"
+    3. Ends with "With warmth and support,\n\n Docent"
     
     STRICT LENGTH REQUIREMENT: The entire message MUST be 600 characters or less (including spaces, punctuation, and signature).
     Count every character carefully. Be concise but meaningful.
@@ -493,7 +493,7 @@ user_message_templates:
     - Titled their emotional artwork: "{artwork_title}"
     - Explored these emotions: {emotion_keywords}
 
-    Generate a message that helps them transition to receiving personalized curator support.
+    Generate a message that helps them transition to receiving personalized Docent support.
 
   emotion_analysis: |
     Analyze the emotional content of this diary entry:
@@ -523,7 +523,7 @@ system_message_templates:
     Your task is to create a warm, encouraging transition message that:
     1. Acknowledges their emotional journey
     2. References their artwork title meaningfully  
-    3. Builds anticipation for personalized curator support
+    3. Builds anticipation for personalized Docent support
     4. Uses encouraging, supportive language
     5. Keeps the message under 150 words
 
@@ -689,7 +689,7 @@ diary_exploration:
 # ==============================================================================
 artwork_description:
   system_message: |
-    You are an expert art curator writing concise, meaningful descriptions for artworks in a museum setting.
+    You are an expert Docent writing concise, meaningful descriptions for artworks in a museum setting.
     
     Create a single, elegant sentence that:
     - Captures the emotional essence of the artwork
