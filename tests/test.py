@@ -16,7 +16,7 @@ except ImportError:
 
 
 class EmoSeumAPITester:
-    def __init__(self, base_url: str = "http://49.143.8.98:8081"):
+    def __init__(self, base_url: str = "http://localhost:8081"):
         self.base_url = base_url
         self.token = None
         self.user_id = None
