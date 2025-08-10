@@ -8,6 +8,7 @@ from typing import Dict, Any
 
 try:
     from bson import ObjectId
+
     BSON_AVAILABLE = True
 except ImportError:
     BSON_AVAILABLE = False
@@ -15,7 +16,7 @@ except ImportError:
 
 
 class EmoSeumAPITester:
-    def __init__(self, base_url: str = "http://localhost:8000"):
+    def __init__(self, base_url: str = "http://49.143.8.98:8081"):
         self.base_url = base_url
         self.token = None
         self.user_id = None
@@ -131,7 +132,11 @@ class EmoSeumAPITester:
         # 2. 일기 작성 (새로운 감정 분석 필드 테스트)
         diary_data = {
             "diary_text": "Today I felt really angry and disappointed. I wasn't in a good mood from the morning, and work didn't go well either. I felt confused about my future and surprised by how much this affected me.",
-            "diary_id": str(ObjectId()) if BSON_AVAILABLE else f"test_diary_{uuid.uuid4().hex[:24]}"
+            "diary_id": (
+                str(ObjectId())
+                if BSON_AVAILABLE
+                else f"test_diary_{uuid.uuid4().hex[:24]}"
+            ),
         }
         response = requests.post(
             f"{self.base_url}/therapy/sessions/{self.session_id}/diary",
@@ -139,31 +144,37 @@ class EmoSeumAPITester:
             headers=headers,
         )
         self.print_response("일기 작성", response)
-        
+
         # 새로운 감정 분석 필드 검증
         if response.status_code == 200:
             emotion_analysis = response.json().get("emotion_analysis", {})
             print("\n🔍 감정 분석 결과 검증:")
             print(f"  - Keywords: {emotion_analysis.get('keywords', [])}")
             print(f"  - VAD Scores: {emotion_analysis.get('vad_scores', [])}")
-            print(f"  - Primary Emotion: {emotion_analysis.get('primary_emotion', 'N/A')}")
-            print(f"  - Normalized All Keys: {list(emotion_analysis.get('normalized_all', {}).keys())[:5]}...")
-            print(f"  - Emotion Categories: {emotion_analysis.get('emotion_categories', {})}")
-            
+            print(
+                f"  - Primary Emotion: {emotion_analysis.get('primary_emotion', 'N/A')}"
+            )
+            print(
+                f"  - Normalized All Keys: {list(emotion_analysis.get('normalized_all', {}).keys())[:5]}..."
+            )
+            print(
+                f"  - Emotion Categories: {emotion_analysis.get('emotion_categories', {})}"
+            )
+
             # 데이터 검증
-            normalized_all = emotion_analysis.get('normalized_all', {})
-            emotion_categories = emotion_analysis.get('emotion_categories', {})
-            
+            normalized_all = emotion_analysis.get("normalized_all", {})
+            emotion_categories = emotion_analysis.get("emotion_categories", {})
+
             if normalized_all:
                 total_normalized = sum(normalized_all.values())
                 print(f"  - Normalized Total (should be ~1.0): {total_normalized:.3f}")
                 print(f"  - Normalized Count (should be 28): {len(normalized_all)}")
-            
+
             if emotion_categories:
                 total_categories = sum(emotion_categories.values())
                 print(f"  - Categories Total (should be ~1.0): {total_categories:.3f}")
                 print(f"  - Categories: {list(emotion_categories.keys())}")
-            
+
             print("✅ 새로운 감정 분석 필드 검증 완료\n")
 
         # 일기 작성이 성공하면 새로운 session_id(gallery_item_id)로 업데이트
@@ -202,23 +213,27 @@ class EmoSeumAPITester:
             f"{self.base_url}/therapy/sessions/{self.session_id}", headers=headers
         )
         self.print_response("세션 상세 정보 조회", response)
-        
+
         # 세션 상세 정보에서 새로운 감정 분석 필드 검증
         if response.status_code == 200:
             session_data = response.json()
             emotion_analysis = session_data.get("emotion_analysis", {})
-            
+
             print("\n🔍 세션 상세 정보에서 감정 분석 필드 검증:")
-            if emotion_analysis.get('normalized_all'):
-                print(f"  - Normalized All 포함: ✅ ({len(emotion_analysis['normalized_all'])}개 감정)")
+            if emotion_analysis.get("normalized_all"):
+                print(
+                    f"  - Normalized All 포함: ✅ ({len(emotion_analysis['normalized_all'])}개 감정)"
+                )
             else:
                 print("  - Normalized All 누락: ❌")
-                
-            if emotion_analysis.get('emotion_categories'):
-                print(f"  - Emotion Categories 포함: ✅ ({list(emotion_analysis['emotion_categories'].keys())})")
+
+            if emotion_analysis.get("emotion_categories"):
+                print(
+                    f"  - Emotion Categories 포함: ✅ ({list(emotion_analysis['emotion_categories'].keys())})"
+                )
             else:
                 print("  - Emotion Categories 누락: ❌")
-            
+
             print("✅ 세션 상세 정보 감정 분석 필드 검증 완료\n")
 
     def test_diary_exploration_endpoints(self):
@@ -228,7 +243,7 @@ class EmoSeumAPITester:
         # 1. 일기 심화 탐색 질문 생성 (새로운 감정 분석 필드 테스트)
         exploration_data = {
             "diary_text": "오늘은 정말 우울했다. 아침부터 기분이 좋지 않았고, 일도 잘 풀리지 않았다. 모든 게 다 잘못되는 것 같아서 답답하고 화가 난다.",
-            "emotion_keywords": ["우울", "화남", "답답함"]
+            "emotion_keywords": ["우울", "화남", "답답함"],
         }
         response = requests.post(
             f"{self.base_url}/therapy/diary/explore",
@@ -236,22 +251,26 @@ class EmoSeumAPITester:
             headers=headers,
         )
         self.print_response("일기 심화 탐색 질문 생성", response)
-        
+
         # 일기 심화 탐색에서 새로운 감정 분석 필드 검증
         if response.status_code == 200:
             exploration_result = response.json()
             emotion_analysis = exploration_result.get("emotion_analysis", {})
-            
+
             print("\n🔍 일기 심화 탐색에서 감정 분석 필드 검증:")
             if emotion_analysis:
                 print(f"  - 감정 분석 데이터 포함: ✅")
-                if emotion_analysis.get('normalized_all'):
-                    print(f"  - Normalized All: ✅ ({len(emotion_analysis['normalized_all'])}개)")
-                if emotion_analysis.get('emotion_categories'):
-                    print(f"  - Categories: ✅ ({list(emotion_analysis['emotion_categories'].keys())})")
+                if emotion_analysis.get("normalized_all"):
+                    print(
+                        f"  - Normalized All: ✅ ({len(emotion_analysis['normalized_all'])}개)"
+                    )
+                if emotion_analysis.get("emotion_categories"):
+                    print(
+                        f"  - Categories: ✅ ({list(emotion_analysis['emotion_categories'].keys())})"
+                    )
             else:
                 print("  - 감정 분석 데이터 누락: ❌")
-            
+
             print("✅ 일기 심화 탐색 감정 분석 필드 검증 완료\n")
 
         # 2. 일기 심화 탐색 질문 생성 (감정 키워드 없이)
@@ -282,7 +301,7 @@ class EmoSeumAPITester:
             "diary_text": "오늘은 정말 우울했다. 아침부터 기분이 좋지 않았고, 일도 잘 풀리지 않았다.",
             "previous_question": "Can you describe in more detail the specific situation that led to this emotion?",
             "user_response": "I think it started when I had an argument with my colleague in the morning. It made me feel frustrated and isolated.",
-            "emotion_keywords": ["우울", "좌절", "고립감"]
+            "emotion_keywords": ["우울", "좌절", "고립감"],
         }
         response = requests.post(
             f"{self.base_url}/therapy/diary/explore/follow-up",
@@ -294,109 +313,119 @@ class EmoSeumAPITester:
     def test_new_emotion_analysis_features(self):
         """새로운 감정 분석 기능 집중 테스트"""
         headers = self.get_headers()
-        
+
         print(f"\n{'='*50}")
         print("새로운 감정 분석 기능 집중 테스트")
         print(f"{'='*50}")
-        
+
         # 다양한 감정을 포함한 테스트 케이스들
         test_cases = [
             {
                 "name": "긍정적 감정 위주",
-                "diary": "Today was absolutely amazing! I felt so proud of my achievements and grateful for my supportive friends. The excitement and joy I experienced made me realize how much I love my life."
+                "diary": "Today was absolutely amazing! I felt so proud of my achievements and grateful for my supportive friends. The excitement and joy I experienced made me realize how much I love my life.",
             },
             {
-                "name": "부정적 감정 위주", 
-                "diary": "I'm feeling incredibly angry and disappointed today. The sadness and grief are overwhelming me, and I can't shake this feeling of disgust and fear about my future."
+                "name": "부정적 감정 위주",
+                "diary": "I'm feeling incredibly angry and disappointed today. The sadness and grief are overwhelming me, and I can't shake this feeling of disgust and fear about my future.",
             },
             {
                 "name": "혼합된 감정",
-                "diary": "I'm confused about my feelings today. While I'm curious about new opportunities, I also feel nervous and surprised by unexpected changes. There's some relief mixed with realization."
+                "diary": "I'm confused about my feelings today. While I'm curious about new opportunities, I also feel nervous and surprised by unexpected changes. There's some relief mixed with realization.",
             },
             {
                 "name": "중립적 감정",
-                "diary": "Today was just a regular day. Nothing particularly exciting or upsetting happened. I went through my usual routine and felt pretty neutral about everything."
-            }
+                "diary": "Today was just a regular day. Nothing particularly exciting or upsetting happened. I went through my usual routine and felt pretty neutral about everything.",
+            },
         ]
-        
+
         for i, test_case in enumerate(test_cases, 1):
             print(f"\n📊 테스트 케이스 {i}: {test_case['name']}")
-            
+
             # 새 세션 시작
-            response = requests.post(f"{self.base_url}/therapy/sessions", headers=headers)
+            response = requests.post(
+                f"{self.base_url}/therapy/sessions", headers=headers
+            )
             if response.status_code != 200:
                 print(f"❌ 세션 시작 실패: {test_case['name']}")
                 continue
-                
+
             session_id = response.json()["session_id"]
-            
+
             # 일기 작성 및 감정 분석
             diary_data = {
-                "diary_text": test_case['diary'],
-                "diary_id": f"test_diary_{uuid.uuid4().hex[:24]}"
+                "diary_text": test_case["diary"],
+                "diary_id": f"test_diary_{uuid.uuid4().hex[:24]}",
             }
-            
+
             response = requests.post(
                 f"{self.base_url}/therapy/sessions/{session_id}/diary",
                 json=diary_data,
                 headers=headers,
             )
-            
+
             if response.status_code != 200:
                 print(f"❌ 일기 작성 실패: {test_case['name']}")
                 continue
-            
+
             # 감정 분석 결과 상세 검증
             emotion_analysis = response.json().get("emotion_analysis", {})
             session_id = response.json()["session_id"]  # 업데이트된 session_id
-            
+
             print(f"  📝 일기 내용 (첫 50자): {test_case['diary'][:50]}...")
             print(f"  🎯 상위 감정들: {emotion_analysis.get('keywords', [])}")
             print(f"  🧠 주요 감정: {emotion_analysis.get('primary_emotion', 'N/A')}")
-            
+
             # 정규화 검증
-            normalized_all = emotion_analysis.get('normalized_all', {})
+            normalized_all = emotion_analysis.get("normalized_all", {})
             if normalized_all:
                 total = sum(normalized_all.values())
-                top_5_emotions = sorted(normalized_all.items(), key=lambda x: x[1], reverse=True)[:5]
+                top_5_emotions = sorted(
+                    normalized_all.items(), key=lambda x: x[1], reverse=True
+                )[:5]
                 print(f"  📊 정규화 합계: {total:.3f} (목표: 1.0)")
-                print(f"  🔝 상위 5개 정규화 점수: {[(k, f'{v:.3f}') for k, v in top_5_emotions]}")
-            
+                print(
+                    f"  🔝 상위 5개 정규화 점수: {[(k, f'{v:.3f}') for k, v in top_5_emotions]}"
+                )
+
             # 카테고리별 분석
-            categories = emotion_analysis.get('emotion_categories', {})
+            categories = emotion_analysis.get("emotion_categories", {})
             if categories:
                 cat_total = sum(categories.values())
                 print(f"  📂 카테고리 합계: {cat_total:.3f} (목표: 1.0)")
-                sorted_categories = sorted(categories.items(), key=lambda x: x[1], reverse=True)
-                print(f"  📊 카테고리 점수: {[(k, f'{v:.3f}') for k, v in sorted_categories]}")
-            
+                sorted_categories = sorted(
+                    categories.items(), key=lambda x: x[1], reverse=True
+                )
+                print(
+                    f"  📊 카테고리 점수: {[(k, f'{v:.3f}') for k, v in sorted_categories]}"
+                )
+
             # 검증 결과
             validations = []
             if normalized_all and len(normalized_all) == 28:
                 validations.append("✅ 28개 감정 정규화 완료")
             else:
                 validations.append("❌ 28개 감정 정규화 실패")
-                
+
             if normalized_all and 0.99 <= sum(normalized_all.values()) <= 1.01:
                 validations.append("✅ 정규화 합계 올바름")
             else:
                 validations.append("❌ 정규화 합계 오류")
-                
+
             if categories and len(categories) == 4:
                 validations.append("✅ 4개 카테고리 생성 완료")
             else:
                 validations.append("❌ 4개 카테고리 생성 실패")
-                
+
             if categories and 0.99 <= sum(categories.values()) <= 1.01:
                 validations.append("✅ 카테고리 합계 올바름")
             else:
                 validations.append("❌ 카테고리 합계 오류")
-            
+
             for validation in validations:
                 print(f"  {validation}")
-            
+
             print(f"  {'='*30}")
-        
+
         print(f"\n{'='*50}")
         print("✅ 새로운 감정 분석 기능 집중 테스트 완료")
         print(f"{'='*50}\n")
@@ -404,20 +433,20 @@ class EmoSeumAPITester:
     def test_stepwise_diary_exploration(self):
         """단계적 일기 심화 탐색 플로우 테스트"""
         headers = self.get_headers()
-        
+
         print(f"\n{'='*50}")
         print("단계적 일기 심화 탐색 플로우 테스트 시작")
         print(f"{'='*50}")
-        
+
         # 테스트용 일기 내용
         diary_text = "Today I had a really difficult day at work. My manager criticized my project in front of the whole team, and I felt embarrassed and angry. I've been working on this project for weeks, and it felt like all my effort was dismissed."
         emotion_keywords = ["embarrassed", "angry", "dismissed"]
-        
+
         # 1단계: 초기 질문 생성
         print("\n🔍 1단계: 초기 탐색 질문 생성")
         exploration_data = {
             "diary_text": diary_text,
-            "emotion_keywords": emotion_keywords
+            "emotion_keywords": emotion_keywords,
         }
         response = requests.post(
             f"{self.base_url}/therapy/diary/explore",
@@ -425,11 +454,11 @@ class EmoSeumAPITester:
             headers=headers,
         )
         self.print_response("1단계 - 초기 질문", response)
-        
+
         if response.status_code != 200:
             print("❌ 초기 질문 생성 실패 - 단계적 테스트 중단")
             return
-            
+
         # 첫 번째 질문 추출
         try:
             first_result = response.json()
@@ -440,29 +469,29 @@ class EmoSeumAPITester:
         except Exception as e:
             print(f"❌ 응답 파싱 실패: {e} - 단계적 테스트 중단")
             return
-        
+
         # 2단계: 첫 번째 질문에 대한 답변 시뮬레이션 및 후속 질문
         print("\n🔍 2단계: 첫 번째 답변 후 후속 질문")
         user_response_1 = "When my manager criticized my work in front of everyone, I felt my face getting hot and my heart racing. I wanted to defend myself but I was too shocked to speak up. It made me question whether I'm good enough for this job."
-        
+
         follow_up_data_1 = {
             "diary_text": diary_text,
             "previous_question": first_question,
             "user_response": user_response_1,
-            "emotion_keywords": emotion_keywords + ["shocked", "questioning"]
+            "emotion_keywords": emotion_keywords + ["shocked", "questioning"],
         }
-        
+
         response = requests.post(
             f"{self.base_url}/therapy/diary/explore/follow-up",
             json=follow_up_data_1,
             headers=headers,
         )
         self.print_response("2단계 - 첫 번째 후속 질문", response)
-        
+
         if response.status_code != 200:
             print("❌ 첫 번째 후속 질문 생성 실패")
             return
-            
+
         # 두 번째 질문 추출
         try:
             second_result = response.json()
@@ -473,25 +502,25 @@ class EmoSeumAPITester:
         except Exception as e:
             print(f"❌ 두 번째 응답 파싱 실패: {e}")
             return
-        
+
         # 3단계: 두 번째 질문에 대한 답변 시뮬레이션 및 후속 질문
         print("\n🔍 3단계: 두 번째 답변 후 후속 질문")
         user_response_2 = "I've always been a perfectionist, and I think that's why criticism hits me so hard. My self-worth is tied to my work performance. When someone criticizes my work, it feels like they're criticizing me as a person."
-        
+
         follow_up_data_2 = {
             "diary_text": diary_text,
             "previous_question": second_question,
             "user_response": user_response_2,
-            "emotion_keywords": emotion_keywords + ["perfectionist", "self-worth"]
+            "emotion_keywords": emotion_keywords + ["perfectionist", "self-worth"],
         }
-        
+
         response = requests.post(
             f"{self.base_url}/therapy/diary/explore/follow-up",
             json=follow_up_data_2,
             headers=headers,
         )
         self.print_response("3단계 - 두 번째 후속 질문", response)
-        
+
         # 4단계: 탐색 완료 시뮬레이션
         print("\n🔍 4단계: 탐색 완료 시나리오")
         if response.status_code == 200:
@@ -499,27 +528,28 @@ class EmoSeumAPITester:
                 third_result = response.json()
                 if third_result.get("questions"):
                     third_question = third_result["questions"][0]["question"]
-                    
+
                     # 마지막 답변 시뮬레이션
                     user_response_3 = "I realize that I need to separate my personal worth from my work performance. Maybe I can view criticism as an opportunity to improve rather than a personal attack. I should also communicate better with my manager about my concerns."
-                    
+
                     follow_up_data_3 = {
                         "diary_text": diary_text,
                         "previous_question": third_question,
                         "user_response": user_response_3,
-                        "emotion_keywords": emotion_keywords + ["realization", "improvement"]
+                        "emotion_keywords": emotion_keywords
+                        + ["realization", "improvement"],
                     }
-                    
+
                     response = requests.post(
                         f"{self.base_url}/therapy/diary/explore/follow-up",
                         json=follow_up_data_3,
                         headers=headers,
                     )
                     self.print_response("4단계 - 최종 후속 질문", response)
-                    
+
             except Exception as e:
                 print(f"❌ 세 번째 응답 파싱 실패: {e}")
-        
+
         print(f"\n{'='*50}")
         print("✅ 단계적 일기 심화 탐색 플로우 테스트 완료")
         print(f"{'='*50}\n")
@@ -608,11 +638,11 @@ class EmoSeumAPITester:
             # 새로운 감정 분석 기능 집중 테스트
             print("\n🧠 새로운 감정 분석 기능 집중 테스트")
             self.test_new_emotion_analysis_features()
-            
+
             # 일기 심화 탐색 관련 엔드포인트
             print("\n📝 일기 심화 탐색 엔드포인트 테스트")
             self.test_diary_exploration_endpoints()
-            
+
             # 단계적 일기 심화 탐색 플로우 테스트
             print("\n🔄 단계적 일기 심화 탐색 플로우 테스트")
             self.test_stepwise_diary_exploration()
