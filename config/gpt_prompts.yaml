@@ -321,14 +321,14 @@ emergency_messages:
     recognition: "Your courage in exploring your feelings is truly appreciated."
     personal_note: "This moment of reflection is an important step in your growth."
     guidance: "Continue to be gentle with yourself as you navigate these emotions."
-    closing: "With warmth and support,\n\n your Docent"
+    closing: "\n\nWith care and understanding,\nDocent"
 
   general_error:
     opening: "We appreciate you taking time to reflect today."
     recognition: "Your willingness to engage with your emotions shows strength."
     personal_note: "Every step in emotional awareness is meaningful."
     guidance: "Take this time to honor your feelings and experiences."
-    closing: "With care and understanding,\n\n Docent"
+    closing: "\n\nWith care and understanding,\nDocent"
 
 # ==============================================================================
 # 시각적 요소 매핑 (Visual Mappings)
@@ -419,13 +419,13 @@ unsafe_keywords:
 # ==============================================================================
 quality_assurance:
   prompt_requirements:
-    max_length: 400  # SD 1.5는 77토큰(약 300-400자) 처리 가능
-    min_length: 200  # 충분한 디테일을 위한 최소 길이
+    max_length: 400 # SD 1.5는 77토큰(약 300-400자) 처리 가능
+    min_length: 200 # 충분한 디테일을 위한 최소 길이
     required_elements: ["emotion_reference", "visual_style", "atmosphere"]
     forbidden_elements: ["template_artifacts", "placeholder_text", "ai_self_reference"]
 
   message_requirements:
-    total_length: "600 characters maximum"  # 유니티 화면 출력 제한
+    total_length: "600 characters maximum" # 유니티 화면 출력 제한
     personalization_minimum: 2
     required_sections: ["opening", "recognition", "guidance", "closing"]
     tone_consistency: true
@@ -457,7 +457,7 @@ user_message_templates:
     3. Promotes healing and reflection
     4. Uses artistic terminology and style references
     5. Focuses on beauty, hope, and growth
-    
+
     STRICT REQUIREMENTS:
     - The prompt MUST be between 250-350 characters (not words, CHARACTERS)
     - Count every character including spaces and punctuation
@@ -483,8 +483,10 @@ user_message_templates:
     Create a meaningful, personalized docent message that:
     1. Addresses the user by their nickname when appropriate
     2. Acknowledges their specific journey and provides therapeutic support
-    3. Ends with "With warmth and support,\n\n Docent"
-    
+    3. Ends with "With warmth and support,
+
+    Docent"
+
     STRICT LENGTH REQUIREMENT: The entire message MUST be 600 characters or less (including spaces, punctuation, and signature).
     Count every character carefully. Be concise but meaningful.
 
@@ -690,14 +692,14 @@ diary_exploration:
 artwork_description:
   system_message: |
     You are an expert Docent writing concise, meaningful descriptions for artworks in a museum setting.
-    
+
     Create a single, elegant sentence that:
     - Captures the emotional essence of the artwork
     - References the artistic style and visual elements
     - Connects the viewer to the emotional journey
     - Uses sophisticated but accessible language
     - Feels appropriate for a museum placard
-    
+
     The description should be 15-25 words and sound like it belongs in a prestigious art gallery.
     Write only in English.
 
