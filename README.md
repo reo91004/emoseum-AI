@@ -1,6 +1,6 @@
 # README.md
 
-![alt text](<data/(08.14) 4Bits 포스터 최종안.jpg>)
+![alt text](<포스터 최종안.jpg>)
 
 # Emoseum
 
